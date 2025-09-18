@@ -26,21 +26,23 @@ import com.icescream.nestpay.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
 
-data class CommunityWallet(
+data class PaymentCommunity(
     val id: String,
     val name: String,
     val description: String,
-    val totalAmount: Double,
-    val paidAmount: Double,
-    val pendingPayments: Int,
+    val targetAmount: Double,
+    val currentAmount: Double,
+    val memberCount: Int,
     val dueDate: String,
     val color: Color,
     val icon: ImageVector,
-    val status: WalletStatus = WalletStatus.ACTIVE
+    val status: CommunityStatus = CommunityStatus.ACTIVE,
+    val createdBy: String,
+    val walletAddress: String // Interledger wallet address for the community goal
 )
 
-enum class WalletStatus {
-    ACTIVE, COMPLETED, PENDING
+enum class CommunityStatus {
+    ACTIVE, COMPLETED, PAUSED
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,11 +50,20 @@ enum class WalletStatus {
 fun HomeScreen(
     onNavigateToActivity: () -> Unit = {},
     onNavigateToNotifications: () -> Unit = {},
-    onNavigateToProfile: () -> Unit = {}
+    onNavigateToProfile: () -> Unit = {},
+    onCreateCommunity: () -> Unit = {},
+    viewModel: com.icescream.nestpay.ui.viewmodel.CommunityViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+    authViewModel: com.icescream.nestpay.ui.viewmodel.AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
-    var searchQuery by remember { mutableStateOf("") }
+    val uiState by viewModel.uiState.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val authState by authViewModel.authState.collectAsState()
 
-    val sampleWallets = emptyList<CommunityWallet>() // Removed all sample wallets
+    // Obtener información del usuario
+    val userName = when (val currentAuthState = authState) {
+        is com.icescream.nestpay.ui.viewmodel.AuthState.Success -> currentAuthState.userInfo.displayName
+        else -> "Invitado"
+    }
 
     Column(
         modifier = Modifier
@@ -79,14 +90,12 @@ fun HomeScreen(
                         fontWeight = FontWeight.Medium
                     )
                     Text(
-                        text = "Hola, Usuario25",
+                        text = "Hola, $userName",
                         color = Color.White,
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
-
-                // Removed all the top right icons (signal bars, wifi, battery, help button)
             }
         }
 
@@ -107,8 +116,8 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    Icons.Default.Menu,
-                    contentDescription = "Menu",
+                    Icons.Default.Search,
+                    contentDescription = "Search",
                     tint = Color.Gray,
                     modifier = Modifier.size(20.dp)
                 )
@@ -117,12 +126,12 @@ fun HomeScreen(
 
                 BasicTextField(
                     value = searchQuery,
-                    onValueChange = { searchQuery = it },
+                    onValueChange = { viewModel.searchCommunities(it) },
                     modifier = Modifier.weight(1f),
                     decorationBox = { innerTextField ->
                         if (searchQuery.isEmpty()) {
                             Text(
-                                text = "¿Buscas una Wallet en específico?",
+                                text = "¿Buscas una comunidad específica?",
                                 color = Color.Gray,
                                 fontSize = 14.sp
                             )
@@ -135,61 +144,152 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Wallets section header
+        // Communities section header
         Box(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            Text(
-                text = "Tus Wallets",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.Black
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Tus Comunidades",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
+
+                // Refresh button
+                IconButton(
+                    onClick = { viewModel.refresh() }
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = "Actualizar",
+                        tint = NestPayPrimary
+                    )
+                }
+            }
         }
 
-        // Wallets list (now empty)
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(sampleWallets) { wallet ->
-                WalletCard(wallet = wallet)
+        // Communities content based on state
+        when (val currentState = uiState) {
+            is com.icescream.nestpay.ui.viewmodel.CommunityUiState.Loading -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(
+                            color = NestPayPrimary,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Cargando comunidades...",
+                            color = Color.Gray,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
             }
 
-            // Show empty state message
-            if (sampleWallets.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        contentAlignment = Alignment.Center
+            is com.icescream.nestpay.ui.viewmodel.CommunityUiState.Error -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(32.dp)
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = Color.Red.copy(alpha = 0.6f)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Error al cargar",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.Red
+                        )
+                        Text(
+                            text = currentState.message,
+                            fontSize = 14.sp,
+                            color = Color.Gray,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { viewModel.refresh() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = NestPayPrimary
+                            )
                         ) {
-                            Icon(
-                                Icons.Default.AccountBox, // Using basic available icon
-                                contentDescription = null,
+                            Text("Reintentar")
+                        }
+                    }
+                }
+            }
+
+            is com.icescream.nestpay.ui.viewmodel.CommunityUiState.Success -> {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(currentState.communities) { community ->
+                        CommunityCard(community = community)
+                    }
+
+                    // Show empty state message if no communities
+                    if (currentState.communities.isEmpty()) {
+                        item {
+                            Box(
                                 modifier = Modifier
-                                    .size(64.dp)
-                                    .padding(bottom = 16.dp),
-                                tint = Color.Gray.copy(alpha = 0.5f)
-                            )
-                            Text(
-                                text = "No tienes wallets aún",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = Color.Gray,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                            Text(
-                                text = "Crea tu primera wallet comunitaria\npresionando el botón +",
-                                fontSize = 14.sp,
-                                color = Color.Gray.copy(alpha = 0.7f),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
+                                    .fillMaxWidth()
+                                    .padding(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(
+                                        Icons.Default.AccountCircle,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .size(64.dp)
+                                            .padding(bottom = 16.dp),
+                                        tint = Color.Gray.copy(alpha = 0.5f)
+                                    )
+                                    Text(
+                                        text = if (searchQuery.isNotEmpty())
+                                            "No se encontraron comunidades"
+                                        else
+                                            "No tienes comunidades aún",
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color.Gray,
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+                                    Text(
+                                        text = if (searchQuery.isNotEmpty())
+                                            "Intenta con otros términos de búsqueda"
+                                        else
+                                            "Crea tu primera comunidad de pagos\no únete a una existente",
+                                        fontSize = 14.sp,
+                                        color = Color.Gray.copy(alpha = 0.7f),
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -230,14 +330,14 @@ fun HomeScreen(
 
                 // FAB in center
                 FloatingActionButton(
-                    onClick = { /* TODO: Add wallet */ },
+                    onClick = onCreateCommunity,
                     containerColor = NestPayPrimary,
                     contentColor = Color.White,
                     modifier = Modifier.size(56.dp)
                 ) {
                     Icon(
                         Icons.Default.Add,
-                        contentDescription = "Agregar",
+                        contentDescription = "Crear Comunidad",
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -260,8 +360,8 @@ fun HomeScreen(
 }
 
 @Composable
-fun WalletCard(wallet: CommunityWallet) {
-    val progress = (wallet.paidAmount / wallet.totalAmount).coerceIn(0.0, 1.0)
+fun CommunityCard(community: PaymentCommunity) {
+    val progress = (community.currentAmount / community.targetAmount).coerceIn(0.0, 1.0)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -275,30 +375,30 @@ fun WalletCard(wallet: CommunityWallet) {
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Wallet icon
+                // Community icon
                 Box(
                     modifier = Modifier
                         .size(48.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(wallet.color.copy(alpha = 0.1f)),
+                        .background(community.color.copy(alpha = 0.1f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        wallet.icon,
+                        community.icon,
                         contentDescription = null,
-                        tint = wallet.color,
+                        tint = community.color,
                         modifier = Modifier.size(24.dp)
                     )
                 }
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                // Wallet info
+                // Community info
                 Column(
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = wallet.name,
+                        text = community.name,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.Black,
@@ -306,7 +406,7 @@ fun WalletCard(wallet: CommunityWallet) {
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = wallet.description,
+                        text = community.description,
                         fontSize = 12.sp,
                         color = Color.Gray,
                         maxLines = 1
@@ -319,10 +419,10 @@ fun WalletCard(wallet: CommunityWallet) {
                         .size(12.dp)
                         .clip(CircleShape)
                         .background(
-                            when (wallet.status) {
-                                WalletStatus.COMPLETED -> Color(0xFF4CAF50)
-                                WalletStatus.PENDING -> AccentOrange
-                                WalletStatus.ACTIVE -> AccentOrange
+                            when (community.status) {
+                                CommunityStatus.COMPLETED -> Color(0xFF4CAF50)
+                                CommunityStatus.PAUSED -> AccentOrange
+                                CommunityStatus.ACTIVE -> NestPayPrimary
                             }
                         )
                 )
@@ -330,22 +430,64 @@ fun WalletCard(wallet: CommunityWallet) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Payment info
+            // Community stats
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Pagos Pendientes: ${if (wallet.pendingPayments == 0) "Ninguno" else wallet.pendingPayments}",
+                    text = "${community.memberCount} miembros",
                     fontSize = 12.sp,
                     color = Color.Gray
                 )
                 Text(
-                    text = "Ahorrado: $${wallet.paidAmount.toInt()}",
+                    text = "Meta: $${community.targetAmount.toInt()}",
                     fontSize = 12.sp,
                     color = Color.Gray
                 )
             }
+
+            Text(
+                text = "Vence: ${community.dueDate}",
+                fontSize = 12.sp,
+                color = Color.Gray,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Progress indicator
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LinearProgressIndicator(
+                    progress = progress.toFloat(),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    color = community.color,
+                    trackColor = community.color.copy(alpha = 0.2f)
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Text(
+                    text = "${(progress * 100).toInt()}%",
+                    fontSize = 12.sp,
+                    color = Color.Gray,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            // Current amount text
+            Text(
+                text = "Recaudado: $${community.currentAmount.toInt()}",
+                fontSize = 12.sp,
+                color = Color.Gray,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
     }
 }

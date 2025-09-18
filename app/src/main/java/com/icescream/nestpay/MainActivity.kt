@@ -13,11 +13,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.icescream.nestpay.ui.screens.ActivityScreen
+import com.icescream.nestpay.ui.screens.CreateCommunityScreen
 import com.icescream.nestpay.ui.screens.HomeScreen
 import com.icescream.nestpay.ui.screens.NotificationScreen
 import com.icescream.nestpay.ui.screens.ProfileScreen
 import com.icescream.nestpay.ui.screens.WelcomeScreen
 import com.icescream.nestpay.ui.theme.NestPayTheme
+import com.icescream.nestpay.ui.viewmodel.AuthViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,6 +37,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun NestPayApp() {
     val navController = rememberNavController()
+    val authViewModel: AuthViewModel = viewModel()
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         NavHost(
@@ -47,7 +51,8 @@ fun NestPayApp() {
                         navController.navigate("home") {
                             popUpTo("welcome") { inclusive = true }
                         }
-                    }
+                    },
+                    authViewModel = authViewModel
                 )
             }
             composable("home") {
@@ -60,7 +65,11 @@ fun NestPayApp() {
                     },
                     onNavigateToProfile = {
                         navController.navigate("profile")
-                    }
+                    },
+                    onCreateCommunity = {
+                        navController.navigate("create_community")
+                    },
+                    authViewModel = authViewModel
                 )
             }
             composable("activity") {
@@ -99,6 +108,13 @@ fun NestPayApp() {
                     },
                     onNavigateToNotifications = {
                         navController.navigate("notifications")
+                    }
+                )
+            }
+            composable("create_community") {
+                CreateCommunityScreen(
+                    onNavigateBack = {
+                        navController.navigate("home")
                     }
                 )
             }
