@@ -1,5 +1,8 @@
 package com.icescream.nestpay.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,9 +18,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +51,10 @@ enum class CommunityStatus {
     ACTIVE, COMPLETED, PAUSED
 }
 
+enum class CommunityFilter {
+    MIS_CREADOS, PENDIENTES, PAGADOS, TARDE
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -58,11 +68,14 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val authState by authViewModel.authState.collectAsState()
+    var selectedFilter by remember { mutableStateOf(CommunityFilter.MIS_CREADOS) }
 
     // Obtener información del usuario
     val userName = when (val currentAuthState = authState) {
         is com.icescream.nestpay.ui.viewmodel.AuthState.Success -> currentAuthState.userInfo.displayName
-        else -> "Invitado"
+            ?: "Usuario25"
+
+        else -> "Usuario25"
     }
 
     Column(
@@ -70,30 +83,56 @@ fun HomeScreen(
             .fillMaxSize()
             .background(Color(0xFFF8F9FA))
     ) {
-        // Header with time and greeting
+        // Header with greeting and help button - con padding top para status bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(NestPayPrimary)
-                .padding(horizontal = 20.dp, vertical = 24.dp)
+                .statusBarsPadding() // Esto agrega el padding necesario para la status bar
+                .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                // Solo el saludo con nombre, sin hora
+                Text(
+                    text = "Hola, $userName",
+                    color = Color.White,
+                    fontSize = 24.sp, // Aumentar el tamaño
+                    fontWeight = FontWeight.Bold
+                )
+
+                // Help button with white circle and exclamation mark like in the image
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.width(50.dp) // Dar un ancho fijo para mejor control
+                ) {
+                    // Círculo blanco con signo de exclamación
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp) // Hacer el círculo un poco más pequeño
+                            .background(Color.White, CircleShape)
+                            .clickable { /* Handle help action */ },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "!",
+                            color = NestPayPrimary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp)) // Espacio mínimo entre círculo y texto
+
+                    // Texto "Ayuda" directamente debajo
                     Text(
-                        text = getCurrentTime(),
+                        text = "Ayuda",
                         color = Color.White,
-                        fontSize = 16.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = "Hola, $userName",
-                        color = Color.White,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -103,21 +142,20 @@ fun HomeScreen(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .offset(y = (-12).dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            shape = RoundedCornerShape(12.dp)
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            shape = RoundedCornerShape(8.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    Icons.Default.Search,
-                    contentDescription = "Search",
+                    Icons.Default.Menu,
+                    contentDescription = "Menu",
                     tint = Color.Gray,
                     modifier = Modifier.size(20.dp)
                 )
@@ -131,7 +169,7 @@ fun HomeScreen(
                     decorationBox = { innerTextField ->
                         if (searchQuery.isEmpty()) {
                             Text(
-                                text = "¿Buscas una comunidad específica?",
+                                text = "¿Buscas una Wallet en específico?",
                                 color = Color.Gray,
                                 fontSize = 14.sp
                             )
@@ -142,36 +180,52 @@ fun HomeScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Communities section header
-        Box(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        // Category tabs with animated bubbles
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Tus Comunidades",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Black
-                )
-
-                // Refresh button
-                IconButton(
-                    onClick = { viewModel.refresh() }
-                ) {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = "Actualizar",
-                        tint = NestPayPrimary
-                    )
-                }
-            }
+            AnimatedCategoryTab(
+                text = "Mis Creados",
+                isSelected = selectedFilter == CommunityFilter.MIS_CREADOS,
+                onClick = { selectedFilter = CommunityFilter.MIS_CREADOS }
+            )
+            AnimatedCategoryTab(
+                text = "Pendientes",
+                isSelected = selectedFilter == CommunityFilter.PENDIENTES,
+                onClick = { selectedFilter = CommunityFilter.PENDIENTES }
+            )
+            AnimatedCategoryTab(
+                text = "Pagados",
+                isSelected = selectedFilter == CommunityFilter.PAGADOS,
+                onClick = { selectedFilter = CommunityFilter.PAGADOS }
+            )
+            AnimatedCategoryTab(
+                text = "Tarde",
+                isSelected = selectedFilter == CommunityFilter.TARDE,
+                onClick = { selectedFilter = CommunityFilter.TARDE }
+            )
         }
+
+        // Communities section header (moved above divider)
+        Text(
+            text = "Tus Comunidades",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.Black,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
+        )
+
+        // Divider
+        Divider(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            color = Color.Gray.copy(alpha = 0.3f),
+            thickness = 1.dp
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Communities content based on state
         when (val currentState = uiState) {
@@ -240,56 +294,45 @@ fun HomeScreen(
             }
 
             is com.icescream.nestpay.ui.viewmodel.CommunityUiState.Success -> {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(currentState.communities) { community ->
-                        CommunityCard(community = community)
-                    }
+                val filteredCommunities =
+                    filterCommunities(currentState.communities, selectedFilter)
 
-                    // Show empty state message if no communities
-                    if (currentState.communities.isEmpty()) {
-                        item {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(32.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        Icons.Default.AccountCircle,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .size(64.dp)
-                                            .padding(bottom = 16.dp),
-                                        tint = Color.Gray.copy(alpha = 0.5f)
-                                    )
-                                    Text(
-                                        text = if (searchQuery.isNotEmpty())
-                                            "No se encontraron comunidades"
-                                        else
-                                            "No tienes comunidades aún",
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.Gray,
-                                        modifier = Modifier.padding(bottom = 8.dp)
-                                    )
-                                    Text(
-                                        text = if (searchQuery.isNotEmpty())
-                                            "Intenta con otros términos de búsqueda"
-                                        else
-                                            "Crea tu primera comunidad de pagos\no únete a una existente",
-                                        fontSize = 14.sp,
-                                        color = Color.Gray.copy(alpha = 0.7f),
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                    )
-                                }
-                            }
+                if (filteredCommunities.isEmpty()) {
+                    // Empty state - improved positioning and size
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.offset(y = (-40).dp)
+                        ) {
+                            Text(
+                                text = "Aún no eres anfitrión de ninguna\nComunidad.",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.Black,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(bottom = 16.dp)
+                            )
+                            Text(
+                                text = "¡Crea la tuya y empieza a organizar pagos en\nequipo!",
+                                fontSize = 16.sp,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(filteredCommunities) { community ->
+                            CommunityCard(community = community)
                         }
                     }
                 }
@@ -311,10 +354,12 @@ fun HomeScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp),
+                    .padding(vertical = 12.dp, horizontal = 8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Spacer(modifier = Modifier.width(8.dp))
+
                 BottomNavItem(
                     icon = Icons.Default.Home,
                     label = "Inicio",
@@ -328,33 +373,93 @@ fun HomeScreen(
                     onClick = onNavigateToActivity
                 )
 
-                // FAB in center
+                // FAB in center - circular shape
                 FloatingActionButton(
                     onClick = onCreateCommunity,
                     containerColor = NestPayPrimary,
                     contentColor = Color.White,
-                    modifier = Modifier.size(56.dp)
+                    shape = CircleShape // Asegurar que sea circular
                 ) {
                     Icon(
                         Icons.Default.Add,
                         contentDescription = "Crear Comunidad",
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(28.dp) // Hacer el ícono un poco más grande también
                     )
                 }
 
                 BottomNavItem(
-                    icon = Icons.Default.Notifications,
+                    icon = Icons.Default.Notifications, // Mantener campana de notificación
                     label = "Notificación",
                     selected = false,
                     onClick = onNavigateToNotifications
                 )
                 BottomNavItem(
-                    icon = Icons.Default.Person,
+                    icon = Icons.Default.AccountCircle, // Ícono de perfil circular
                     label = "Perfil",
                     selected = false,
                     onClick = onNavigateToProfile
                 )
+
+                Spacer(modifier = Modifier.width(8.dp))
             }
+        }
+    }
+}
+
+@Composable
+fun AnimatedCategoryTab(
+    text: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val backgroundColor by animateColorAsState(
+        targetValue = if (isSelected) NestPayPrimary else Color.Transparent,
+        animationSpec = tween(durationMillis = 300),
+        label = "background_color"
+    )
+
+    val textColor by animateColorAsState(
+        targetValue = if (isSelected) Color.White else Color.Gray,
+        animationSpec = tween(durationMillis = 300),
+        label = "text_color"
+    )
+
+    val scale by animateFloatAsState(
+        targetValue = if (isSelected) 1.05f else 1f,
+        animationSpec = tween(durationMillis = 200),
+        label = "scale"
+    )
+
+    Box(
+        modifier = Modifier
+            .scale(scale)
+            .background(
+                color = backgroundColor,
+                shape = RoundedCornerShape(20.dp)
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Text(
+            text = text,
+            fontSize = 14.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            color = textColor
+        )
+    }
+}
+
+fun filterCommunities(
+    communities: List<PaymentCommunity>,
+    filter: CommunityFilter
+): List<PaymentCommunity> {
+    return when (filter) {
+        CommunityFilter.MIS_CREADOS -> communities.filter { it.createdBy == "current_user" }
+        CommunityFilter.PENDIENTES -> communities.filter { it.status == CommunityStatus.ACTIVE && it.currentAmount < it.targetAmount }
+        CommunityFilter.PAGADOS -> communities.filter { it.status == CommunityStatus.COMPLETED }
+        CommunityFilter.TARDE -> {
+            // Lógica para comunidades tarde - por ahora retornamos lista vacía
+            emptyList()
         }
     }
 }
