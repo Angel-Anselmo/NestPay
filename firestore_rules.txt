@@ -1,0 +1,90 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // === COMUNIDADES (Reglas más flexibles) ===
+    match /communities/{communityId} {
+      // Permitir lectura a usuarios autenticados (incluyendo anónimos)
+      allow read: if request.auth != null;
+      
+      // Permitir creación a usuarios autenticados con validaciones básicas
+      allow create: if request.auth != null && 
+                   request.auth.uid == request.resource.data.createdBy &&
+                   validateCommunityCreate(request.resource.data);
+      
+      // Permitir actualización al creador o miembros
+      allow update: if request.auth != null && 
+                   (request.auth.uid == resource.data.createdBy ||
+                    request.auth.uid in resource.data.members);
+      
+      // Solo el creador puede eliminar
+      allow delete: if request.auth != null && 
+                   request.auth.uid == resource.data.createdBy;
+    }
+    
+    // === CONCEPTOS DE PAGO ===
+    match /paymentConcepts/{conceptId} {
+      // Permitir lectura a miembros de la comunidad
+      allow read: if request.auth != null;
+      
+      // Permitir creación a usuarios autenticados
+      allow create: if request.auth != null && 
+                   request.auth.uid == request.resource.data.createdBy &&
+                   validateConceptCreate(request.resource.data);
+      
+      // Permitir actualización al creador del concepto
+      allow update: if request.auth != null && 
+                   request.auth.uid == resource.data.createdBy;
+    }
+    
+    // === PAGOS DE USUARIOS ===
+    match /userPayments/{paymentId} {
+      // Permitir lectura a usuarios autenticados
+      allow read: if request.auth != null;
+      
+      // Permitir creación a usuarios autenticados
+      allow create: if request.auth != null && 
+                   request.auth.uid == request.resource.data.userId &&
+                   validatePaymentCreate(request.resource.data);
+    }
+    
+    // === USUARIOS ===
+    match /users/{userId} {
+      // Solo el propietario puede acceder a sus datos
+      allow read, write: if request.auth != null && 
+                        request.auth.uid == userId;
+    }
+    
+    // === FUNCIONES DE VALIDACIÓN (Más flexibles) ===
+    
+    // Validar datos de comunidad al crear (validaciones básicas)
+    function validateCommunityCreate(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.members is list && data.members.size() >= 1 &&
+             data.createdBy is string && data.createdBy == data.members[0] &&
+             data.inviteCode is string && data.inviteCode.size() >= 6 &&
+             data.category is string &&
+             data.isActive is bool;
+    }
+    
+    // Validar datos de concepto de pago al crear
+    function validateConceptCreate(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.communityId is string &&
+             data.targetAmount is number && data.targetAmount > 0 &&
+             data.currentAmount is number && data.currentAmount >= 0 &&
+             data.createdBy is string &&
+             data.status is string;
+    }
+    
+    // Validar datos de pago al crear
+    function validatePaymentCreate(data) {
+      return data.conceptId is string &&
+             data.communityId is string &&
+             data.userId is string &&
+             data.amount is number && data.amount > 0 &&
+             data.status is string;
+    }
+  }
+}

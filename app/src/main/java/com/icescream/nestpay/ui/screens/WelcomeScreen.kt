@@ -91,7 +91,7 @@ fun WelcomeScreen(
         FeatureItem(
             emoji = "👥",
             title = "Comunidades",
-            description = "Únete o crea grupos de pago"
+            description = "Únete o crea comunidades de pago"
         )
 
         Spacer(modifier = Modifier.height(16.dp))

@@ -2,69 +2,56 @@ package com.icescream.nestpay.data.repository
 
 import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
-import com.google.firebase.firestore.ktx.firestore
-import com.google.firebase.ktx.Firebase
-import com.icescream.nestpay.ui.screens.PaymentCommunity
-import com.icescream.nestpay.ui.screens.CommunityStatus
-import com.icescream.nestpay.ui.theme.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import com.icescream.nestpay.data.auth.AuthService
+import com.icescream.nestpay.data.models.Community
+import com.icescream.nestpay.data.models.FirebaseCommunity
 import kotlinx.coroutines.tasks.await
-import java.util.*
-
-data class FirebaseCommunityData(
-    val id: String = "",
-    val name: String = "",
-    val description: String = "",
-    val targetAmount: Double = 0.0,
-    val currentAmount: Double = 0.0,
-    val walletAddress: String = "",
-    val createdBy: String = "",
-    val members: List<String> = emptyList(),
-    val status: String = "ACTIVE",
-    val dueDate: String = "",
-    val category: String = "CUSTOM",
-    val isPublic: Boolean = false,
-    val createdAt: com.google.firebase.Timestamp = com.google.firebase.Timestamp.now(),
-    val updatedAt: com.google.firebase.Timestamp = com.google.firebase.Timestamp.now()
-)
 
 class FirebaseCommunityRepository {
 
-    private val firestore: FirebaseFirestore = Firebase.firestore
+    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val authService: AuthService = AuthService()
+
     private val communitiesCollection = firestore.collection("communities")
-    private val authService = com.icescream.nestpay.data.auth.AuthService()
 
     companion object {
         private const val TAG = "FirebaseCommunityRepo"
     }
 
-    suspend fun getCommunities(): Result<List<PaymentCommunity>> {
+    private fun getCurrentUser(): com.google.firebase.auth.FirebaseUser {
+        return authService.getCurrentUser()
+            ?: throw Exception("Usuario no autenticado")
+    }
+
+    fun getCurrentUserId(): String? {
+        return authService.getCurrentUser()?.uid
+    }
+
+    suspend fun getCommunities(): Result<List<Community>> {
         return try {
             Log.d(TAG, "Fetching communities from Firestore")
+            val currentUser = getCurrentUser()
 
+            // Get communities where the user is a member
             val snapshot = communitiesCollection
-                .whereEqualTo("isPublic", true)
-                .orderBy("createdAt", Query.Direction.DESCENDING)
+                .whereArrayContains("members", currentUser.uid)
                 .get()
                 .await()
 
             val communities = snapshot.documents.mapNotNull { document ->
                 try {
-                    val data = document.toObject(FirebaseCommunityData::class.java)
-                    data?.let {
-                        it.copy(id = document.id).toPaymentCommunity()
-                    }
+                    val data = document.toObject(FirebaseCommunity::class.java)
+                    data?.copy(id = document.id)?.toCommunity()
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing community document ${document.id}", e)
+                    Log.e(TAG, "Error parsing community document", e)
                     null
                 }
-            }
+            }.sortedByDescending { it.id } // Sort in client side temporarily
 
-            Log.d(TAG, "Successfully fetched ${communities.size} communities")
+            Log.d(
+                TAG,
+                "Successfully fetched ${communities.size} communities for user ${currentUser.uid}"
+            )
             Result.success(communities)
 
         } catch (e: Exception) {
@@ -73,63 +60,53 @@ class FirebaseCommunityRepository {
         }
     }
 
-    suspend fun getCommunityById(id: String): Result<PaymentCommunity?> {
-        return try {
-            Log.d(TAG, "Fetching community by ID: $id")
-
-            val document = communitiesCollection.document(id).get().await()
-
-            if (document.exists()) {
-                val data = document.toObject(FirebaseCommunityData::class.java)
-                val community = data?.copy(id = document.id)?.toPaymentCommunity()
-                Result.success(community)
-            } else {
-                Log.w(TAG, "Community with ID $id not found")
-                Result.success(null)
-            }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error fetching community by ID: $id", e)
-            Result.failure(e)
-        }
-    }
-
     suspend fun createCommunity(
         name: String,
         description: String,
-        targetAmount: Double,
-        walletAddress: String,
-        dueDate: String,
         category: String,
-        isPublic: Boolean = true
-    ): Result<PaymentCommunity> {
+        paymentPointer: String,
+        isPublic: Boolean = false
+    ): Result<Community> {
         return try {
             Log.d(TAG, "Creating new community: $name")
 
-            val currentUserId = authService.getCurrentUserId()
-                ?: return Result.failure(Exception("Usuario no autenticado"))
+            val currentUser = getCurrentUser()
+            val inviteCode = generateInviteCode()
             val now = com.google.firebase.Timestamp.now()
 
-            val communityData = FirebaseCommunityData(
-                name = name,
-                description = description,
-                targetAmount = targetAmount,
-                currentAmount = 0.0,
-                walletAddress = walletAddress,
-                createdBy = currentUserId,
-                members = listOf(currentUserId),
-                status = "ACTIVE",
-                dueDate = dueDate,
-                category = category,
-                isPublic = isPublic,
-                createdAt = now,
-                updatedAt = now
+            // Create community data without ID field initially
+            val communityData = mapOf(
+                "name" to name,
+                "description" to description,
+                "members" to listOf(currentUser.uid),
+                "createdBy" to currentUser.uid,
+                "inviteCode" to inviteCode,
+                "category" to category,
+                "isActive" to true,
+                "paymentPointer" to paymentPointer,
+                "createdAt" to now,
+                "updatedAt" to now
             )
 
-            val documentRef = communitiesCollection.add(communityData).await()
-            val createdCommunity = communityData.copy(id = documentRef.id).toPaymentCommunity()
+            val docRef = communitiesCollection.add(communityData).await()
 
-            Log.d(TAG, "Successfully created community with ID: ${documentRef.id}")
+            Log.d(TAG, "Community created successfully: ${docRef.id}")
+
+            // Return the created community
+            val createdCommunity = Community(
+                id = docRef.id,
+                name = name,
+                description = description,
+                members = listOf(currentUser.uid),
+                createdBy = currentUser.uid,
+                inviteCode = inviteCode,
+                category = category,
+                isActive = true,
+                paymentPointer = paymentPointer,
+                createdAt = now.toDate(),
+                updatedAt = now.toDate()
+            )
+
             Result.success(createdCommunity)
 
         } catch (e: Exception) {
@@ -138,132 +115,84 @@ class FirebaseCommunityRepository {
         }
     }
 
-    suspend fun joinCommunity(communityId: String): Result<PaymentCommunity?> {
-        return try {
-            Log.d(TAG, "Joining community: $communityId")
-
-            val currentUserId = authService.getCurrentUserId()
-                ?: return Result.failure(Exception("Usuario no autenticado"))
-            val communityRef = communitiesCollection.document(communityId)
-
-            firestore.runTransaction { transaction ->
-                val snapshot = transaction.get(communityRef)
-                val data = snapshot.toObject(FirebaseCommunityData::class.java)
-
-                if (data != null && currentUserId !in data.members) {
-                    val updatedMembers = data.members + currentUserId
-                    transaction.update(
-                        communityRef,
-                        mapOf(
-                            "members" to updatedMembers,
-                            "updatedAt" to com.google.firebase.Timestamp.now()
-                        )
-                    )
-                }
-            }.await()
-
-            // Return updated community
-            getCommunityById(communityId)
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error joining community: $communityId", e)
-            Result.failure(e)
-        }
+    private fun generateInviteCode(): String {
+        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        return (1..6).map { chars.random() }.joinToString("")
     }
 
-    suspend fun searchCommunities(query: String): Result<List<PaymentCommunity>> {
+    suspend fun joinCommunity(inviteCode: String): Result<Community> {
         return try {
-            Log.d(TAG, "Searching communities with query: $query")
+            Log.d(TAG, "Attempting to join community with invite code: $inviteCode")
 
-            // Firestore no tiene búsqueda de texto completa nativa
-            // Por simplicidad, obtenemos todas y filtramos localmente
-            val allCommunities = getCommunities().getOrThrow()
+            val currentUser = getCurrentUser()
+            Log.d(TAG, "Current user UID: ${currentUser.uid}")
 
-            val filteredCommunities = allCommunities.filter { community ->
-                community.name.contains(query, ignoreCase = true) ||
-                        community.description.contains(query, ignoreCase = true)
+            // Find community by invite code only (removed isActive filter)
+            val snapshot = communitiesCollection
+                .whereEqualTo("inviteCode", inviteCode)
+                .get()
+                .await()
+
+            Log.d(TAG, "Query result size: ${snapshot.size()}")
+
+            if (snapshot.isEmpty) {
+                Log.w(TAG, "No community found with invite code: $inviteCode")
+                return Result.failure(Exception("Código de invitación '$inviteCode' no existe"))
             }
 
-            Log.d(TAG, "Found ${filteredCommunities.size} communities matching query")
-            Result.success(filteredCommunities)
+            val document = snapshot.documents.first()
+            Log.d(TAG, "Found community document with ID: ${document.id}")
+
+            // Debug: log all document data
+            Log.d(TAG, "Full document data: ${document.data}")
+
+            val communityData = document.toObject(FirebaseCommunity::class.java)
+                ?: return Result.failure(Exception("Error al procesar los datos de la comunidad"))
+
+            Log.d(TAG, "Community name: ${communityData.name}")
+            Log.d(TAG, "Community isActive: ${communityData.isActive}")
+            Log.d(TAG, "Current members: ${communityData.members}")
+
+            // Check if community is active
+            if (!communityData.isActive) {
+                Log.w(TAG, "Community ${document.id} is not active")
+                return Result.failure(Exception("La comunidad con código '$inviteCode' no está activa"))
+            }
+
+            // Check if user is already a member
+            if (communityData.members.contains(currentUser.uid)) {
+                Log.i(
+                    TAG,
+                    "User ${currentUser.uid} is already a member of community ${document.id}"
+                )
+                return Result.failure(Exception("Ya eres miembro de esta comunidad"))
+            }
+
+            // Add user to members list
+            val updatedMembers = communityData.members + currentUser.uid
+            Log.d(TAG, "Updated members list: $updatedMembers")
+
+            val updateData = mapOf(
+                "members" to updatedMembers,
+                "updatedAt" to com.google.firebase.Timestamp.now()
+            )
+
+            document.reference.update(updateData).await()
+
+            Log.d(TAG, "User ${currentUser.uid} successfully joined community ${document.id}")
+
+            // Return the updated community
+            val updatedCommunity = communityData.copy(
+                id = document.id,
+                members = updatedMembers,
+                updatedAt = com.google.firebase.Timestamp.now()
+            ).toCommunity()
+
+            Result.success(updatedCommunity)
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error searching communities", e)
+            Log.e(TAG, "Error joining community with invite code: $inviteCode", e)
             Result.failure(e)
         }
-    }
-
-    // Observar cambios en tiempo real
-    fun observeCommunities(): Flow<Result<List<PaymentCommunity>>> = flow {
-        try {
-            communitiesCollection
-                .whereEqualTo("isPublic", true)
-                .orderBy("createdAt", Query.Direction.DESCENDING)
-                .addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        Log.e(TAG, "Error observing communities", error)
-                        return@addSnapshotListener
-                    }
-
-                    if (snapshot != null) {
-                        val communities = snapshot.documents.mapNotNull { document ->
-                            try {
-                                val data = document.toObject(FirebaseCommunityData::class.java)
-                                data?.copy(id = document.id)?.toPaymentCommunity()
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error parsing observed community", e)
-                                null
-                            }
-                        }
-
-                        Log.d(TAG, "Observed ${communities.size} communities")
-                        // Note: En un flujo real necesitarías un canal para emitir
-                    }
-                }
-
-            // Por ahora, emitir resultado inicial
-            emit(getCommunities())
-
-        } catch (e: Exception) {
-            emit(Result.failure(e))
-        }
-    }
-}
-
-// Extension function para convertir FirebaseCommunityData a PaymentCommunity
-private fun FirebaseCommunityData.toPaymentCommunity(): PaymentCommunity {
-    return PaymentCommunity(
-        id = this.id,
-        name = this.name,
-        description = this.description,
-        targetAmount = this.targetAmount,
-        currentAmount = this.currentAmount,
-        memberCount = this.members.size,
-        dueDate = this.dueDate,
-        color = getCommunityColor(this.category),
-        icon = getCommunityIcon(this.category),
-        status = CommunityStatus.valueOf(this.status),
-        createdBy = this.createdBy,
-        walletAddress = this.walletAddress
-    )
-}
-
-private fun getCommunityColor(category: String): androidx.compose.ui.graphics.Color {
-    return when (category) {
-        "TRAVEL" -> AccentPurple
-        "GIFT" -> AccentYellow
-        "EDUCATION" -> AccentBlue
-        "EVENT" -> AccentGreen
-        else -> NestPayPrimary
-    }
-}
-
-private fun getCommunityIcon(category: String): androidx.compose.ui.graphics.vector.ImageVector {
-    return when (category) {
-        "TRAVEL" -> Icons.Default.Place
-        "GIFT" -> Icons.Default.Favorite
-        "EDUCATION" -> Icons.Default.AccountBox
-        "EVENT" -> Icons.Default.Star
-        else -> Icons.Default.Add
     }
 }

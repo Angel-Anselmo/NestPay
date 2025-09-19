@@ -16,34 +16,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.icescream.nestpay.data.models.Community
 import com.icescream.nestpay.ui.components.BottomNavItem
+import com.icescream.nestpay.ui.components.CommunityOptionsDialog
 import com.icescream.nestpay.ui.theme.*
+import com.icescream.nestpay.ui.viewmodel.CommunityUiState
+import com.icescream.nestpay.ui.viewmodel.CommunityViewModel
 import java.text.SimpleDateFormat
 import java.util.*
-
-data class PaymentCommunity(
-    val id: String,
-    val name: String,
-    val description: String,
-    val targetAmount: Double,
-    val currentAmount: Double,
-    val memberCount: Int,
-    val dueDate: String,
-    val color: Color,
-    val icon: ImageVector,
-    val status: CommunityStatus = CommunityStatus.ACTIVE,
-    val createdBy: String,
-    val walletAddress: String // Interledger wallet address for the community goal
-)
-
-enum class CommunityStatus {
-    ACTIVE, COMPLETED, PAUSED
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,12 +36,16 @@ fun HomeScreen(
     onNavigateToNotifications: () -> Unit = {},
     onNavigateToProfile: () -> Unit = {},
     onCreateCommunity: () -> Unit = {},
-    viewModel: com.icescream.nestpay.ui.viewmodel.CommunityViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+    onJoinCommunity: () -> Unit = {},
+    onCommunityClick: (String) -> Unit = {}, // Navigate to community detail
+    viewModel: CommunityViewModel,
     authViewModel: com.icescream.nestpay.ui.viewmodel.AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val authState by authViewModel.authState.collectAsState()
+
+    var showOptionsDialog by remember { mutableStateOf(false) }
 
     // Obtener información del usuario
     val userName = when (val currentAuthState = authState) {
@@ -77,25 +65,19 @@ fun HomeScreen(
                 .background(NestPayPrimary)
                 .padding(horizontal = 20.dp, vertical = 24.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = getCurrentTime(),
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = "Hola, $userName",
-                        color = Color.White,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+            Column {
+                Text(
+                    text = getCurrentTime(),
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "Hola, $userName",
+                    color = Color.White,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
 
@@ -175,7 +157,7 @@ fun HomeScreen(
 
         // Communities content based on state
         when (val currentState = uiState) {
-            is com.icescream.nestpay.ui.viewmodel.CommunityUiState.Loading -> {
+            is CommunityUiState.Loading -> {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -197,7 +179,7 @@ fun HomeScreen(
                 }
             }
 
-            is com.icescream.nestpay.ui.viewmodel.CommunityUiState.Error -> {
+            is CommunityUiState.Error -> {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -239,14 +221,17 @@ fun HomeScreen(
                 }
             }
 
-            is com.icescream.nestpay.ui.viewmodel.CommunityUiState.Success -> {
+            is CommunityUiState.Success -> {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(currentState.communities) { community ->
-                        CommunityCard(community = community)
+                        SimpleCommunityCard(
+                            community = community,
+                            onClick = { onCommunityClick(community.id) }
+                        )
                     }
 
                     // Show empty state message if no communities
@@ -262,7 +247,7 @@ fun HomeScreen(
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Icon(
-                                        Icons.Default.AccountCircle,
+                                        Icons.Default.AccountBox,
                                         contentDescription = null,
                                         modifier = Modifier
                                             .size(64.dp)
@@ -330,14 +315,14 @@ fun HomeScreen(
 
                 // FAB in center
                 FloatingActionButton(
-                    onClick = onCreateCommunity,
+                    onClick = { showOptionsDialog = true },
                     containerColor = NestPayPrimary,
                     contentColor = Color.White,
                     modifier = Modifier.size(56.dp)
                 ) {
                     Icon(
                         Icons.Default.Add,
-                        contentDescription = "Crear Comunidad",
+                        contentDescription = "Opciones de Comunidad",
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -357,14 +342,26 @@ fun HomeScreen(
             }
         }
     }
+
+    // Options Dialog
+    CommunityOptionsDialog(
+        showDialog = showOptionsDialog,
+        onDismiss = { showOptionsDialog = false },
+        onCreateCommunity = onCreateCommunity,
+        onJoinCommunity = onJoinCommunity,
+        viewModel = viewModel
+    )
 }
 
 @Composable
-fun CommunityCard(community: PaymentCommunity) {
-    val progress = (community.currentAmount / community.targetAmount).coerceIn(0.0, 1.0)
-
+fun SimpleCommunityCard(
+    community: Community,
+    onClick: () -> Unit
+) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         shape = RoundedCornerShape(16.dp)
@@ -380,13 +377,13 @@ fun CommunityCard(community: PaymentCommunity) {
                     modifier = Modifier
                         .size(48.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(community.color.copy(alpha = 0.1f)),
+                        .background(NestPayPrimary.copy(alpha = 0.1f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        community.icon,
+                        Icons.Default.AccountBox,
                         contentDescription = null,
-                        tint = community.color,
+                        tint = NestPayPrimary,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -406,7 +403,7 @@ fun CommunityCard(community: PaymentCommunity) {
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = community.description,
+                        text = community.description.ifEmpty { "${community.members.size} miembros" },
                         fontSize = 12.sp,
                         color = Color.Gray,
                         maxLines = 1
@@ -419,10 +416,9 @@ fun CommunityCard(community: PaymentCommunity) {
                         .size(12.dp)
                         .clip(CircleShape)
                         .background(
-                            when (community.status) {
-                                CommunityStatus.COMPLETED -> Color(0xFF4CAF50)
-                                CommunityStatus.PAUSED -> AccentOrange
-                                CommunityStatus.ACTIVE -> NestPayPrimary
+                            when {
+                                community.isActive -> NestPayPrimary
+                                else -> Color.Gray
                             }
                         )
                 )
@@ -436,54 +432,19 @@ fun CommunityCard(community: PaymentCommunity) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "${community.memberCount} miembros",
+                    text = "${community.members.size} miembros",
                     fontSize = 12.sp,
                     color = Color.Gray
                 )
                 Text(
-                    text = "Meta: $${community.targetAmount.toInt()}",
+                    text = "Categoría: ${community.category}",
                     fontSize = 12.sp,
                     color = Color.Gray
                 )
             }
 
             Text(
-                text = "Vence: ${community.dueDate}",
-                fontSize = 12.sp,
-                color = Color.Gray,
-                modifier = Modifier.padding(top = 2.dp)
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Progress indicator
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LinearProgressIndicator(
-                    progress = progress.toFloat(),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = community.color,
-                    trackColor = community.color.copy(alpha = 0.2f)
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Text(
-                    text = "${(progress * 100).toInt()}%",
-                    fontSize = 12.sp,
-                    color = Color.Gray,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            // Current amount text
-            Text(
-                text = "Recaudado: $${community.currentAmount.toInt()}",
+                text = "Código: ${community.inviteCode}",
                 fontSize = 12.sp,
                 color = Color.Gray,
                 modifier = Modifier.padding(top = 4.dp)

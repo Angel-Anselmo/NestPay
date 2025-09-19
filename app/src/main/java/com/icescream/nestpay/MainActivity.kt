@@ -13,6 +13,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.icescream.nestpay.ui.screens.ActivityScreen
+import com.icescream.nestpay.ui.screens.CommunityDetailsScreen
 import com.icescream.nestpay.ui.screens.CreateCommunityScreen
 import com.icescream.nestpay.ui.screens.HomeScreen
 import com.icescream.nestpay.ui.screens.NotificationScreen
@@ -20,14 +21,27 @@ import com.icescream.nestpay.ui.screens.ProfileScreen
 import com.icescream.nestpay.ui.screens.WelcomeScreen
 import com.icescream.nestpay.ui.theme.NestPayTheme
 import com.icescream.nestpay.ui.viewmodel.AuthViewModel
+import com.icescream.nestpay.ui.viewmodel.CommunityViewModel
+import com.icescream.nestpay.ui.viewmodel.PaymentConceptViewModel
+import com.icescream.nestpay.ui.viewmodel.ContributionViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.os.Build
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Force light mode - disable dark theme
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.statusBarColor = getColor(android.R.color.transparent)
+            window.navigationBarColor = getColor(android.R.color.transparent)
+        }
+
         enableEdgeToEdge()
         setContent {
-            NestPayTheme {
+            NestPayTheme(
+                darkTheme = false // Force light theme always
+            ) {
                 NestPayApp()
             }
         }
@@ -38,6 +52,9 @@ class MainActivity : ComponentActivity() {
 fun NestPayApp() {
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = viewModel()
+    val communityViewModel: CommunityViewModel = viewModel()
+    val paymentConceptViewModel: PaymentConceptViewModel = viewModel()
+    val contributionViewModel: ContributionViewModel = viewModel()
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         NavHost(
@@ -69,7 +86,15 @@ fun NestPayApp() {
                     onCreateCommunity = {
                         navController.navigate("create_community")
                     },
-                    authViewModel = authViewModel
+                    onJoinCommunity = {
+                        // Now handled directly in the dialog
+                        // No navigation needed
+                    },
+                    onCommunityClick = { communityId ->
+                        navController.navigate("community_details/$communityId")
+                    },
+                    authViewModel = authViewModel,
+                    viewModel = communityViewModel
                 )
             }
             composable("activity") {
@@ -114,8 +139,25 @@ fun NestPayApp() {
             composable("create_community") {
                 CreateCommunityScreen(
                     onNavigateBack = {
-                        navController.navigate("home")
+                        navController.popBackStack()
+                    },
+                    onCommunityCreated = {
+                        navController.navigate("home") {
+                            popUpTo("home") { inclusive = true }
+                        }
                     }
+                )
+            }
+            composable("community_details/{communityId}") { backStackEntry ->
+                val communityId = backStackEntry.arguments?.getString("communityId")
+                CommunityDetailsScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    communityId = communityId,
+                    viewModel = communityViewModel,
+                    paymentConceptViewModel = paymentConceptViewModel,
+                    contributionViewModel = contributionViewModel
                 )
             }
         }

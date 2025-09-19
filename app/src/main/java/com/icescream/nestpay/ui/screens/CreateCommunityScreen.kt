@@ -30,8 +30,7 @@ data class CommunityTemplate(
     val name: String,
     val description: String,
     val icon: ImageVector,
-    val color: Color,
-    val suggestedAmount: Double? = null
+    val color: Color
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,39 +42,53 @@ fun CreateCommunityScreen(
 ) {
     var communityName by remember { mutableStateOf("") }
     var communityDescription by remember { mutableStateOf("") }
-    var targetAmount by remember { mutableStateOf("") }
-    var dueDate by remember { mutableStateOf("") }
+    var paymentPointer by remember { mutableStateOf("") }
     var selectedTemplate by remember { mutableStateOf<CommunityTemplate?>(null) }
-    var walletAddress by remember { mutableStateOf("") }
+
+    val createCommunityState by viewModel.createCommunityState.collectAsState()
+
+    // Observar el estado de creación
+    LaunchedEffect(createCommunityState) {
+        when (createCommunityState) {
+            is CreateCommunityState.Success -> {
+                onCommunityCreated()
+                viewModel.resetCreateCommunityState()
+            }
+            else -> { /* No action needed */
+            }
+        }
+    }
 
     val communityTemplates = listOf(
         CommunityTemplate(
+            name = "Roommates",
+            description = "Gastos compartidos del hogar",
+            icon = Icons.Default.Home,
+            color = AccentBlue
+        ),
+        CommunityTemplate(
             name = "Viaje Grupal",
-            description = "Organiza pagos para viajes con amigos",
+            description = "Gastos de viaje con amigos",
             icon = Icons.Default.Place,
-            color = AccentPurple,
-            suggestedAmount = 500.0
+            color = AccentPurple
         ),
         CommunityTemplate(
-            name = "Regalo Colectivo",
-            description = "Recolecta dinero para un regalo especial",
-            icon = Icons.Default.Favorite,
-            color = AccentYellow,
-            suggestedAmount = 100.0
-        ),
-        CommunityTemplate(
-            name = "Proyecto Educativo",
-            description = "Financia materiales educativos",
-            icon = Icons.Default.AccountBox,
-            color = AccentBlue,
-            suggestedAmount = 200.0
+            name = "Oficina",
+            description = "Gastos de oficina compartidos",
+            icon = Icons.Default.Build,
+            color = AccentGreen
         ),
         CommunityTemplate(
             name = "Evento Social",
-            description = "Organiza eventos y celebraciones",
+            description = "Organización de eventos",
             icon = Icons.Default.Star,
-            color = AccentGreen,
-            suggestedAmount = 300.0
+            color = AccentYellow
+        ),
+        CommunityTemplate(
+            name = "Familia",
+            description = "Gastos familiares",
+            icon = Icons.Default.Favorite,
+            color = AccentOrange
         ),
         CommunityTemplate(
             name = "Personalizado",
@@ -85,349 +98,353 @@ fun CreateCommunityScreen(
         )
     )
 
-    val createCommunityState by viewModel.createCommunityState.collectAsState()
-
-    LaunchedEffect(createCommunityState) {
-        when (createCommunityState) {
-            is CreateCommunityState.Success -> {
-                onCommunityCreated()
-                viewModel.resetCreateCommunityState()
-            }
-
-            else -> { /* No action needed */
-            }
-        }
-    }
-
-    LazyColumn(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFFF8F9FA))
     ) {
-        item {
-            // Header
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(NestPayPrimary)
-                    .padding(horizontal = 20.dp, vertical = 24.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = onNavigateBack
-                    ) {
-                        Icon(
-                            Icons.Default.ArrowBack,
-                            contentDescription = "Volver",
-                            tint = Color.White
-                        )
-                    }
-
-                    Text(
-                        text = "Crear Comunidad",
-                        color = Color.White,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-            }
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Templates section
-            Text(
-                text = "Elige un tipo de comunidad",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.Black,
-                modifier = Modifier
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 16.dp)
-            )
-        }
-
-        item {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(horizontal = 20.dp)
-            ) {
-                items(communityTemplates) { template ->
-                    TemplateCard(
-                        template = template,
-                        isSelected = selectedTemplate == template,
-                        onClick = {
-                            selectedTemplate = template
-                            if (template.name != "Personalizado") {
-                                communityName = template.name
-                                communityDescription = template.description
-                                targetAmount = template.suggestedAmount?.toString() ?: ""
-                            }
-                        }
-                    )
-                }
-            }
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Form section
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp)
-                ) {
-                    Text(
-                        text = "Detalles de la comunidad",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.Black,
-                        modifier = Modifier.padding(bottom = 20.dp)
-                    )
-
-                    // Community Name
-                    OutlinedTextField(
-                        value = communityName,
-                        onValueChange = { communityName = it },
-                        label = { Text("Nombre de la comunidad") },
-                        placeholder = { Text("Ej: Viaje a Cancún 2024") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = NestPayPrimary,
-                            focusedLabelColor = NestPayPrimary
-                        )
-                    )
-
-                    // Description
-                    OutlinedTextField(
-                        value = communityDescription,
-                        onValueChange = { communityDescription = it },
-                        label = { Text("Descripción") },
-                        placeholder = { Text("¿Para qué es esta comunidad?") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp),
-                        maxLines = 2,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = NestPayPrimary,
-                            focusedLabelColor = NestPayPrimary
-                        )
-                    )
-
-                    // Target Amount
-                    OutlinedTextField(
-                        value = targetAmount,
-                        onValueChange = { targetAmount = it },
-                        label = { Text("Meta de recaudación ($)") },
-                        placeholder = { Text("500") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = NestPayPrimary,
-                            focusedLabelColor = NestPayPrimary
-                        )
-                    )
-
-                    // Due Date
-                    OutlinedTextField(
-                        value = dueDate,
-                        onValueChange = { dueDate = it },
-                        label = { Text("Fecha límite") },
-                        placeholder = { Text("DD/MM/YYYY") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = NestPayPrimary,
-                            focusedLabelColor = NestPayPrimary
-                        )
-                    )
-
-                    // Wallet Address for receiving payments
-                    OutlinedTextField(
-                        value = walletAddress,
-                        onValueChange = { walletAddress = it },
-                        label = { Text("Dirección de wallet destino") },
-                        placeholder = { Text("https://wallet.interledger-test.dev/alice") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = NestPayPrimary,
-                            focusedLabelColor = NestPayPrimary
-                        )
-                    )
-
-                    // Info card about Open Payments
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = NestPayPrimary.copy(alpha = 0.1f)
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.Info,
-                                contentDescription = null,
-                                tint = NestPayPrimary,
-                                modifier = Modifier.size(24.dp)
-                            )
-
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            Column {
-                                Text(
-                                    text = "Pagos vía Interledger",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = NestPayPrimary
-                                )
-                                Text(
-                                    text = "Los pagos se procesarán usando Open Payments API",
-                                    fontSize = 12.sp,
-                                    color = Color.Gray
-                                )
-                            }
-                        }
-                    }
-
-                    Button(
-                        onClick = {
-                            viewModel.createCommunity(
-                                name = communityName,
-                                description = communityDescription,
-                                targetAmount = targetAmount.toDoubleOrNull() ?: 0.0,
-                                walletAddress = walletAddress,
-                                dueDate = dueDate,
-                                category = selectedTemplate?.name?.uppercase()?.replace(" ", "_")
-                                    ?: "CUSTOM"
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = NestPayPrimary
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        enabled = communityName.isNotBlank() &&
-                                targetAmount.isNotBlank() &&
-                                walletAddress.isNotBlank() &&
-                                createCommunityState !is CreateCommunityState.Loading
-                    ) {
-                        when (createCommunityState) {
-                            is CreateCommunityState.Loading -> {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Creando...")
-                            }
-
-                            else -> {
-                                Text(
-                                    text = "Crear Comunidad",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                    }
-
-                    val currentCreateState = createCommunityState
-                    if (currentCreateState is CreateCommunityState.Error) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = currentCreateState.message,
-                            color = Color.Red,
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-            }
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(32.dp))
-        }
-    }
-}
-
-@Composable
-fun TemplateCard(
-    template: CommunityTemplate,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .width(140.dp)
-            .height(120.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) template.color.copy(alpha = 0.1f) else Color.White
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isSelected) 8.dp else 2.dp
-        ),
-        shape = RoundedCornerShape(16.dp),
-        onClick = onClick
-    ) {
-        Column(
+        // Header
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .fillMaxWidth()
+                .background(Color(0xFFFFD770))
+                .padding(horizontal = 16.dp, vertical = 20.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(template.color.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
+            // Centered title and subtitle
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(
-                    template.icon,
-                    contentDescription = null,
-                    tint = template.color,
-                    modifier = Modifier.size(20.dp)
+                Text(
+                    text = "Crear Comunidad",
+                    color = Color.Black,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "Crea una nueva comunidad para gestionar pagos colaborativos",
+                    color = Color.Black.copy(alpha = 0.7f),
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            // X button in top right corner
+            IconButton(
+                onClick = onNavigateBack,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 8.dp, y = (-8).dp)
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Cerrar",
+                    tint = Color.Black,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
 
-            Text(
-                text = template.name,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.Black,
-                textAlign = TextAlign.Center
-            )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Información Básica Section
+                Text(
+                    text = "Información de la Comunidad",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.Black,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+            }
+
+            item {
+                // Nombre de la Comunidad
+                Column {
+                    Text(
+                        text = "Nombre de la Comunidad",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.Black,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = communityName,
+                        onValueChange = { communityName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = {
+                        Text(
+                                "Ej: Roommates Casa 123",
+                                color = Color.Gray
+                            )
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NestPayPrimary,
+                            unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+            }
+
+            item {
+                // Descripción (opcional)
+                Column {
+                    Text(
+                        text = "Descripción (opcional)",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.Black,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = communityDescription,
+                        onValueChange = { communityDescription = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = {
+                            Text(
+                                "Describe el propósito de la comunidad",
+                                color = Color.Gray
+                            )
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NestPayPrimary,
+                            unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        maxLines = 2
+                    )
+                }
+            }
+
+            item {
+                // Payment Pointer
+                Column {
+                    Text(
+                        text = "Payment Pointer (requerido)",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.Black,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = paymentPointer,
+                        onValueChange = { paymentPointer = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = {
+                            Text(
+                                "https://ilp.interledger-test.dev/tu-wallet",
+                                color = Color.Gray
+                            )
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NestPayPrimary,
+                            unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Uri)
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "Todos los pagos de conceptos en esta comunidad irán a este payment pointer",
+                        fontSize = 11.sp,
+                        color = Color.Gray
+                    )
+                }
+            }
+
+            item {
+                // Tipo de Comunidad
+                Column {
+                    Text(
+                        text = "Tipo de Comunidad",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.Black,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    var expanded by remember { mutableStateOf(false) }
+
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = !expanded }
+                    ) {
+                        OutlinedTextField(
+                            value = selectedTemplate?.name ?: "",
+                            onValueChange = {},
+                            readOnly = true,
+                            placeholder = {
+                            Text(
+                                "Selecciona el tipo de comunidad",
+                                    color = Color.Gray
+                                )
+                            },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NestPayPrimary,
+                                unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
+                        ) {
+                            communityTemplates.forEach { template ->
+                                DropdownMenuItem(
+                                    text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                template.icon,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(20.dp),
+                                                tint = template.color
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column {
+                                                Text(template.name, fontWeight = FontWeight.Medium)
+                                                Text(
+                                                    template.description,
+                                                    fontSize = 12.sp,
+                                                    color = Color.Gray
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedTemplate = template
+                                        if (template.name != "Personalizado") {
+                                            // Auto-fill description for non-custom templates
+                                            if (communityDescription.isBlank()) {
+                                                communityDescription = template.description
+                                            }
+                                        }
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Info Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = NestPayPrimary.copy(alpha = 0.1f)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = null,
+                            tint = NestPayPrimary,
+                            modifier = Modifier.size(24.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column {
+                            Text(
+                                text = "Comunidades de Pago",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = NestPayPrimary
+                            )
+                            Text(
+                                text = "Después podrás agregar conceptos específicos de pago dentro de la comunidad",
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // Crear Comunidad Button
+                Button(
+                    onClick = {
+                        viewModel.createCommunity(
+                            name = communityName,
+                            description = communityDescription,
+                            paymentPointer = paymentPointer,
+                            category = selectedTemplate?.name?.uppercase()?.replace(" ", "_")
+                                ?: "CUSTOM"
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF2C3E50)
+                    ),
+                    shape = RoundedCornerShape(25.dp),
+                    enabled = communityName.isNotBlank() &&
+                            paymentPointer.isNotBlank() &&
+                            selectedTemplate != null &&
+                            createCommunityState !is CreateCommunityState.Loading
+                ) {
+                    when (createCommunityState) {
+                        is CreateCommunityState.Loading -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Creando...")
+                        }
+                        else -> {
+                            Text(
+                                text = "Crear Comunidad",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+
+                // Show error if any
+                val currentCreateState = createCommunityState
+                if (currentCreateState is CreateCommunityState.Error) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = currentCreateState.message,
+                        color = Color.Red,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(100.dp)) // Space for navigation
+            }
         }
     }
 }

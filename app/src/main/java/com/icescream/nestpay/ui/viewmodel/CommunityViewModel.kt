@@ -2,15 +2,20 @@ package com.icescream.nestpay.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.icescream.nestpay.data.repository.CommunityRepository
+import com.icescream.nestpay.data.models.Community
 import com.icescream.nestpay.data.repository.FirebaseCommunityRepository
-import com.icescream.nestpay.ui.screens.PaymentCommunity
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlin.collections.filter
+import kotlin.collections.find
+
+// ==========================================
+// UI STATES
+// ==========================================
 
 sealed class CommunityUiState {
     object Loading : CommunityUiState()
-    data class Success(val communities: List<PaymentCommunity>) : CommunityUiState()
+    data class Success(val communities: List<Community>) : CommunityUiState()
     data class Error(val message: String) : CommunityUiState()
 }
 
@@ -21,26 +26,48 @@ sealed class CreateCommunityState {
     data class Error(val message: String) : CreateCommunityState()
 }
 
+sealed class JoinCommunityState {
+    object Idle : JoinCommunityState()
+    object Loading : JoinCommunityState()
+    object Success : JoinCommunityState()
+    data class Error(val message: String) : JoinCommunityState()
+}
+
+// ==========================================
+// VIEW MODEL
+// ==========================================
+
 class CommunityViewModel(
     private val repository: FirebaseCommunityRepository = FirebaseCommunityRepository()
 ) : ViewModel() {
 
+    // Communities
     private val _uiState = MutableStateFlow<CommunityUiState>(CommunityUiState.Loading)
     val uiState: StateFlow<CommunityUiState> = _uiState.asStateFlow()
-
-    private val _createCommunityState =
-        MutableStateFlow<CreateCommunityState>(CreateCommunityState.Idle)
-    val createCommunityState: StateFlow<CreateCommunityState> = _createCommunityState.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _allCommunities = MutableStateFlow<List<PaymentCommunity>>(emptyList())
+    private val _allCommunities = MutableStateFlow<List<Community>>(emptyList())
+
+    // Create Community
+    private val _createCommunityState =
+        MutableStateFlow<CreateCommunityState>(CreateCommunityState.Idle)
+    val createCommunityState: StateFlow<CreateCommunityState> = _createCommunityState.asStateFlow()
+
+    // Join Community
+    private val _joinCommunityState =
+        MutableStateFlow<JoinCommunityState>(JoinCommunityState.Idle)
+    val joinCommunityState: StateFlow<JoinCommunityState> = _joinCommunityState.asStateFlow()
 
     init {
         loadCommunities()
         observeSearchQuery()
     }
+
+    // ==========================================
+    // COMMUNITY OPERATIONS
+    // ==========================================
 
     fun loadCommunities() {
         viewModelScope.launch {
@@ -49,7 +76,7 @@ class CommunityViewModel(
             repository.getCommunities()
                 .onSuccess { communities ->
                     _allCommunities.value = communities
-                    _uiState.value = CommunityUiState.Success(communities)
+                    filterCommunities(_searchQuery.value)
                 }
                 .onFailure { exception ->
                     _uiState.value = CommunityUiState.Error(
@@ -62,10 +89,8 @@ class CommunityViewModel(
     fun createCommunity(
         name: String,
         description: String,
-        targetAmount: Double,
-        walletAddress: String,
-        dueDate: String,
-        category: String
+        paymentPointer: String,
+        category: String = "CUSTOM"
     ) {
         viewModelScope.launch {
             _createCommunityState.value = CreateCommunityState.Loading
@@ -73,21 +98,12 @@ class CommunityViewModel(
             repository.createCommunity(
                 name = name,
                 description = description,
-                targetAmount = targetAmount,
-                walletAddress = walletAddress,
-                dueDate = dueDate,
-                category = category
-            ).onSuccess { newCommunity ->
+                category = category,
+                paymentPointer = paymentPointer
+            ).onSuccess {
                 _createCommunityState.value = CreateCommunityState.Success
-
-                // Actualizar la lista de comunidades
-                val currentCommunities = _allCommunities.value.toMutableList()
-                currentCommunities.add(0, newCommunity)
-                _allCommunities.value = currentCommunities
-
-                // Aplicar filtro actual si hay búsqueda
-                filterCommunities(_searchQuery.value)
-
+                // Recargar todas las comunidades desde Firebase para asegurar sincronización
+                loadCommunities()
             }.onFailure { exception ->
                 _createCommunityState.value = CreateCommunityState.Error(
                     exception.message ?: "Error al crear la comunidad"
@@ -96,29 +112,45 @@ class CommunityViewModel(
         }
     }
 
-    fun searchCommunities(query: String) {
-        _searchQuery.value = query
-    }
-
-    fun joinCommunity(communityId: String) {
+    fun joinCommunity(inviteCode: String) {
         viewModelScope.launch {
-            repository.joinCommunity(communityId)
+            _joinCommunityState.value = JoinCommunityState.Loading
+
+            repository.joinCommunity(inviteCode)
                 .onSuccess {
-                    // Recargar comunidades para mostrar la nueva
+                    _joinCommunityState.value = JoinCommunityState.Success
+                    // Recargar todas las comunidades para mostrar la nueva comunidad
                     loadCommunities()
                 }
                 .onFailure { exception ->
-                    _uiState.value = CommunityUiState.Error(
+                    _joinCommunityState.value = JoinCommunityState.Error(
                         exception.message ?: "Error al unirse a la comunidad"
                     )
                 }
         }
     }
 
+    fun searchCommunities(query: String) {
+        _searchQuery.value = query
+    }
+
     fun resetCreateCommunityState() {
         _createCommunityState.value = CreateCommunityState.Idle
     }
 
+    fun resetJoinCommunityState() {
+        _joinCommunityState.value = JoinCommunityState.Idle
+    }
+
+    fun refresh() {
+        loadCommunities()
+    }
+
+    // ==========================================
+    // HELPER METHODS
+    // ==========================================
+
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
     private fun observeSearchQuery() {
         viewModelScope.launch {
             _searchQuery
@@ -144,12 +176,14 @@ class CommunityViewModel(
     }
 
     // Función para obtener una comunidad específica
-    fun getCommunityById(id: String): PaymentCommunity? {
+    fun getCommunityById(id: String): Community? {
         return _allCommunities.value.find { it.id == id }
     }
 
-    // Función para refrescar datos
-    fun refresh() {
-        loadCommunities()
+    // Función para verificar si el usuario actual es administrador de una comunidad
+    fun isCurrentUserAdmin(communityId: String): Boolean {
+        val community = getCommunityById(communityId)
+        val currentUserId = repository.getCurrentUserId()
+        return community?.createdBy == currentUserId
     }
 }
