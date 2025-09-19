@@ -2,9 +2,9 @@ package com.icescream.nestpay.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -13,20 +13,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.icescream.nestpay.ui.components.BottomNavItem
 import com.icescream.nestpay.ui.theme.*
-
-data class ProfileOption(
-    val id: String,
-    val title: String,
-    val subtitle: String,
-    val icon: ImageVector,
-    val color: Color
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,167 +29,425 @@ fun ProfileScreen(
     onNavigateToActivity: () -> Unit = {},
     onNavigateToNotifications: () -> Unit = {}
 ) {
-    val profileOptions = listOf(
-        ProfileOption(
-            id = "1",
-            title = "Información Personal",
-            subtitle = "Edita tu perfil y configuración",
-            icon = Icons.Default.Person,
-            color = NestPayPrimary
-        ),
-        ProfileOption(
-            id = "2",
-            title = "Wallets Favoritas",
-            subtitle = "Gestiona tus wallets preferidas",
-            icon = Icons.Default.Favorite,
-            color = AccentPurple
-        ),
-        ProfileOption(
-            id = "3",
-            title = "Configuración de Pagos",
-            subtitle = "Métodos de pago y límites",
-            icon = Icons.Default.AccountBox,
-            color = AccentBlue
-        ),
-        ProfileOption(
-            id = "4",
-            title = "Historial Completo",
-            subtitle = "Ver todos tus movimientos",
-            icon = Icons.Default.List,
-            color = AccentGreen
-        ),
-        ProfileOption(
-            id = "5",
-            title = "Ayuda y Soporte",
-            subtitle = "Preguntas frecuentes y contacto",
-            icon = Icons.Default.Info,
-            color = AccentOrange
-        ),
-        ProfileOption(
-            id = "6",
-            title = "Configuración",
-            subtitle = "Preferencias de la aplicación",
-            icon = Icons.Default.Settings,
-            color = Color.Gray
+    var userName by remember { mutableStateOf("Usuario25") }
+    var email by remember { mutableStateOf("usuario2025@gmail.com") }
+    var password by remember { mutableStateOf("••••••••••••") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var selectedAccount by remember { mutableStateOf("Elija una Cuenta") }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showFinalConfirmDialog by remember { mutableStateOf(false) }
+    var confirmationPassword by remember { mutableStateOf("") }
+    var confirmPasswordVisible by remember { mutableStateOf(false) }
+
+    // Color coral/naranja como en la imagen
+    val profileOrange = Color(0xFFFF6B6B)
+
+    // Diálogo de confirmación de eliminación
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "NestPay",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NestPayPrimary,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Confirma tu Contraseña",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Para completar el proceso de eliminación de cuenta, introduce tu contraseña",
+                        fontSize = 14.sp,
+                        color = Color.Gray,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = confirmationPassword,
+                        onValueChange = { confirmationPassword = it },
+                        placeholder = {
+                        Text(
+                                text = "contraseña",
+                                color = Color.Gray
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = {
+                                confirmPasswordVisible = !confirmPasswordVisible
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = if (confirmPasswordVisible) "Ocultar contraseña" else "Mostrar contraseña",
+                                    tint = Color.Gray
+                                )
+                            }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            unfocusedBorderColor = Color.Gray.copy(alpha = 0.3f),
+                            focusedBorderColor = NestPayPrimary
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteDialog = false
+                        showFinalConfirmDialog = true
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF1E3A8A), // Azul oscuro como en la imagen
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Text(
+                        text = "Confirmar",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            },
+            dismissButton = {},
+            containerColor = Color.White,
+            shape = RoundedCornerShape(16.dp)
         )
-    )
+    }
+
+    if (showFinalConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showFinalConfirmDialog = false },
+            title = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "NestPay",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NestPayPrimary,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "¿Estás seguro de querer Eliminar tu cuenta?",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            },
+            text = {
+                Text(
+                    text = "Al continuar, se eliminará tu progreso y no podrás recuperar tu cuenta de nuevo.",
+                    fontSize = 14.sp,
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            },
+            confirmButton = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Botón Eliminar
+                    Button(
+                        onClick = {
+                            // TODO: Handle account deletion
+                            showFinalConfirmDialog = false
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Red,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(24.dp)
+                    ) {
+                        Text(
+                            text = "Eliminar",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    // Botón Cancelar
+                    OutlinedButton(
+                        onClick = {
+                            showFinalConfirmDialog = false
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color(0xFF1E3A8A)
+                        ),
+                        border = ButtonDefaults.outlinedButtonBorder.copy(
+                            brush = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                Color(0xFF1E3A8A)
+                            ).brush
+                        ),
+                        shape = RoundedCornerShape(24.dp)
+                    ) {
+                        Text(
+                            text = "Cancelar",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            },
+            dismissButton = {},
+            containerColor = Color.White,
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFFF8F9FA))
     ) {
-        // Header with profile info
+        // Header con color coral/naranja
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(NestPayPrimary)
-                .padding(horizontal = 20.dp, vertical = 24.dp)
+                .background(profileOrange)
+                .statusBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
+            // Contenido centrado
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // Profile avatar
-                Box(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.Person,
-                        contentDescription = "Profile",
-                        tint = Color.White,
-                        modifier = Modifier.size(40.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
                 Text(
-                    text = "Usuario25",
+                    text = "Usuario2025",
                     color = Color.White,
-                    fontSize = 24.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
-
                 Text(
-                    text = "usuario25@nestpay.com",
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
+                    text = "Se unió en Septiembre de 2025",
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 12.sp
                 )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Stats row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    ProfileStat(
-                        title = "Wallets",
-                        value = "5"
-                    )
-                    ProfileStat(
-                        title = "Completadas",
-                        value = "12"
-                    )
-                    ProfileStat(
-                        title = "Ahorrado",
-                        value = "$2,450"
-                    )
-                }
             }
+
+            // Botón Editar posicionado absolutamente a la derecha
+            Text(
+                text = "Editar",
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Profile options
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        // Información Básica section
+        Column(
+            modifier = Modifier.padding(16.dp)
         ) {
-            items(profileOptions.size) { index ->
-                ProfileOptionCard(
-                    option = profileOptions[index],
-                    onClick = { /* TODO: Handle option click */ }
+            Text(
+                text = "Información Básica",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            // Nombre de usuario field
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Nombre de usuario",
+                    fontSize = 14.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
-            }
 
-            // Logout button
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
-
-                OutlinedButton(
-                    onClick = { /* TODO: Logout */ },
+                OutlinedTextField(
+                    value = userName,
+                    onValueChange = { userName = it },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Color.Red
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedBorderColor = Color.Gray.copy(alpha = 0.3f),
+                        focusedBorderColor = profileOrange
                     ),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(
-                        brush = androidx.compose.foundation.BorderStroke(1.dp, Color.Red).brush
-                    )
-                ) {
-                    Icon(
-                        Icons.Default.ExitToApp,
-                        contentDescription = "Logout",
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Cerrar Sesión",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
 
-                Spacer(modifier = Modifier.height(80.dp)) // Space for bottom nav
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Email field
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Email",
+                    fontSize = 14.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedBorderColor = Color.Gray.copy(alpha = 0.3f),
+                        focusedBorderColor = profileOrange
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Contraseña field
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Contraseña",
+                    fontSize = 14.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña",
+                                tint = Color.Gray
+                            )
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedBorderColor = Color.Gray.copy(alpha = 0.3f),
+                        focusedBorderColor = profileOrange
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Número de Cuenta field
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Número de Cuenta",
+                    fontSize = 14.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                OutlinedTextField(
+                    value = selectedAccount,
+                    onValueChange = { },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    readOnly = true,
+                    trailingIcon = {
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription = "Dropdown",
+                            tint = Color.Gray
+                        )
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedBorderColor = Color.Gray.copy(alpha = 0.3f),
+                        focusedBorderColor = profileOrange
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Cerrar Sesión button
+            Button(
+                onClick = { /* TODO: Handle logout */ },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.White,
+                    contentColor = Color.Black
+                ),
+                shape = RoundedCornerShape(28.dp),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+            ) {
+                Text(
+                    text = "Cerrar Sesión",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Eliminar Cuenta button - ahora muestra el diálogo
+            Button(
+                onClick = { showDeleteDialog = true }, // Mostrar diálogo
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = profileOrange.copy(alpha = 0.1f),
+                    contentColor = profileOrange
+                ),
+                shape = RoundedCornerShape(28.dp)
+            ) {
+                Text(
+                    text = "Eliminar Cuenta",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
     }
@@ -214,10 +466,12 @@ fun ProfileScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp),
+                    .padding(vertical = 12.dp, horizontal = 8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Spacer(modifier = Modifier.width(8.dp))
+
                 BottomNavItem(
                     icon = Icons.Default.Home,
                     label = "Inicio",
@@ -234,14 +488,14 @@ fun ProfileScreen(
                 // FAB in center
                 FloatingActionButton(
                     onClick = { /* TODO: Add wallet */ },
-                    containerColor = NestPayPrimary,
+                    containerColor = NestPayPrimary, // Mantener verde para el FAB
                     contentColor = Color.White,
-                    modifier = Modifier.size(56.dp)
+                    shape = CircleShape
                 ) {
                     Icon(
                         Icons.Default.Add,
                         contentDescription = "Agregar",
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(28.dp)
                     )
                 }
 
@@ -252,99 +506,14 @@ fun ProfileScreen(
                     onClick = onNavigateToNotifications
                 )
                 BottomNavItem(
-                    icon = Icons.Default.Person,
+                    icon = Icons.Default.AccountCircle,
                     label = "Perfil",
                     selected = true,
                     onClick = { }
                 )
+
+                Spacer(modifier = Modifier.width(8.dp))
             }
-        }
-    }
-}
-
-@Composable
-fun ProfileStat(
-    title: String,
-    value: String
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = value,
-            color = Color.White,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = title,
-            color = Color.White.copy(alpha = 0.8f),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium
-        )
-    }
-}
-
-@Composable
-fun ProfileOptionCard(
-    option: ProfileOption,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Option icon
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(option.color.copy(alpha = 0.1f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    option.icon,
-                    contentDescription = null,
-                    tint = option.color,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            // Option content
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(
-                    text = option.title,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.Black
-                )
-                Text(
-                    text = option.subtitle,
-                    fontSize = 14.sp,
-                    color = Color.Gray,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-
-            // Arrow icon
-            Icon(
-                Icons.Default.KeyboardArrowRight,
-                contentDescription = "Navigate",
-                tint = Color.Gray,
-                modifier = Modifier.size(24.dp)
-            )
         }
     }
 }

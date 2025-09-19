@@ -33,8 +33,9 @@ fun BottomNavItem(
             icon,
             contentDescription = label,
             tint = if (selected) NestPayPrimary else Color.Gray,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(28.dp)
         )
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = label,
             fontSize = 10.sp,
