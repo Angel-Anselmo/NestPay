@@ -64,9 +64,13 @@ app.use('/api/webhooks', webhookRoutes);
 // Ruta raíz
 app.get('/', (req, res) => {
   res.json({
-    message: 'NestPay Backend API - Open Payments Integration',
+    message: 'NestPay Backend API - Multi-Wallet Open Payments Integration',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
+    wallets: {
+      admin: process.env.ADMIN_WALLET_ADDRESS_URL || 'No configurada',
+      user: process.env.USER_WALLET_ADDRESS_URL || 'No configurada'
+    },
     endpoints: {
       health: '/api/health',
       wallets: '/api/wallets',
@@ -92,7 +96,9 @@ app.use('*', (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   logger.info(`🚀 Servidor NestPay Backend iniciado en puerto ${PORT}`);
   logger.info(`🌐 URL base: ${process.env.BASE_URL || `http://localhost:${PORT}`}`);
-  logger.info(`💰 Open Payments habilitado con wallet: ${process.env.WALLET_ADDRESS_URL}`);
+  logger.info(`👑 Admin wallet: ${process.env.ADMIN_WALLET_ADDRESS_URL || 'No configurada'}`);
+  logger.info(`👤 User wallet: ${process.env.USER_WALLET_ADDRESS_URL || 'No configurada'}`);
+  logger.info(`💰 Sistema multi-wallet Open Payments habilitado`);
 });
 
 // Manejo graceful de cierre

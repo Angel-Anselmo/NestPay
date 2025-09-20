@@ -19,6 +19,7 @@ import com.icescream.nestpay.ui.screens.HomeScreen
 import com.icescream.nestpay.ui.screens.JoinCommunityScreen
 import com.icescream.nestpay.ui.screens.NotificationScreen
 import com.icescream.nestpay.ui.screens.ProfileScreen
+import com.icescream.nestpay.ui.screens.SimpleTestScreen
 import com.icescream.nestpay.ui.screens.WelcomeScreen
 import com.icescream.nestpay.ui.theme.NestPayTheme
 import com.icescream.nestpay.ui.viewmodel.AuthViewModel
@@ -79,7 +80,17 @@ fun NestPayApp() {
                     onCommunityClick = { communityId ->
                         navController.navigate("community_details/$communityId")
                     },
+                    onNavigateToTest = {
+                        navController.navigate("test_backend")
+                    },
                     authViewModel = authViewModel
+                )
+            }
+            composable("test_backend") {
+                SimpleTestScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
                 )
             }
             composable("activity") {

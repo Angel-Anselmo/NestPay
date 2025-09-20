@@ -7,6 +7,8 @@ import kotlinx.coroutines.tasks.await
 
 class PaymentRepository {
 
+    // URL del backend para dispositivo físico
+    // No olvidar actualizar también en NetworkModule si está ahí configurado
     private val apiService = NetworkModule.apiService
     private val auth = FirebaseAuth.getInstance()
 
@@ -29,200 +31,103 @@ class PaymentRepository {
     }
 
     /**
-     * Create a new payment
+     * Probar conexión con el backend
      */
-    suspend fun createPayment(
-        amount: Double,
+    suspend fun testConnection(): ApiResult<String> {
+        return try {
+            Log.d(TAG, "🧪 Probando conexión con backend local...")
+            val response = apiService.healthCheck()
+
+            if (response.isSuccessful) {
+                val healthData = response.body()
+                Log.d(TAG, "✅ Backend conectado: ${healthData?.message}")
+                ApiResult.Success("Backend conectado correctamente")
+            } else {
+                Log.e(TAG, "❌ Error de conexión: ${response.code()}")
+                ApiResult.Error("Error de conexión: HTTP ${response.code()}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error de red: ${e.message}")
+            ApiResult.Error("Error de red: ${e.message}")
+        }
+    }
+
+    /**
+     * Obtener información del sistema
+     */
+    suspend fun getSystemInfo(): ApiResult<String> {
+        return try {
+            Log.d(TAG, "📊 Obteniendo info del sistema...")
+            val response = apiService.getSystemInfo()
+
+            if (response.isSuccessful) {
+                val systemData = response.body()?.data
+                Log.d(TAG, "✅ Sistema: ${systemData?.system}")
+                ApiResult.Success("Sistema funcionando: ${systemData?.system}")
+            } else {
+                Log.e(TAG, "❌ Error system info: ${response.code()}")
+                ApiResult.Error("Error obteniendo system info: HTTP ${response.code()}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error: ${e.message}")
+            ApiResult.Error("Error: ${e.message}")
+        }
+    }
+
+    /**
+     * Iniciar pago de aporte a comunidad
+     */
+    suspend fun initiateCommunityPayment(
+        amount: String,
         communityId: String,
         conceptId: String,
-        description: String? = null
-    ): Result<PaymentData> {
+        description: String = ""
+    ): ApiResult<String> {
         return try {
-            val token = getAuthToken() ?: return Result.failure(Exception("Usuario no autenticado"))
+            Log.d(TAG, "💰 Iniciando pago de aporte...")
 
-            val request = CreatePaymentRequest(
-                amount = amount,
+            val request = CommunityPaymentRequest(
+                amount = PaymentAmount(value = amount),
+                description = description.ifEmpty { "Aporte a comunidad $communityId - $conceptId" },
                 communityId = communityId,
-                conceptId = conceptId,
-                description = description
+                conceptId = conceptId
             )
 
-            Log.d(
-                TAG,
-                "Creating payment: amount=$amount, community=$communityId, concept=$conceptId"
-            )
+            val response = apiService.initiateCommunityPayment(request)
 
-            when (val result = safeApiCall {
-                apiService.createPayment("Bearer $token", request)
-            }) {
-                is ApiResult.Success -> {
-                    Log.d(TAG, "Payment created successfully: ${result.data.data.paymentId}")
-                    Result.success(result.data.data)
-                }
-
-                is ApiResult.Error -> {
-                    Log.e(TAG, "Error creating payment: ${result.message}")
-                    Result.failure(Exception(result.message))
-                }
-
-                is ApiResult.Loading -> {
-                    Result.failure(Exception("Unexpected loading state"))
-                }
+            if (response.isSuccessful) {
+                val paymentData = response.body()?.data
+                Log.d(TAG, "✅ Pago iniciado: ${paymentData?.incomingPaymentId}")
+                ApiResult.Success("Pago iniciado - ID: ${paymentData?.incomingPaymentId}")
+            } else {
+                Log.e(TAG, "❌ Error iniciando pago: ${response.code()}")
+                ApiResult.Error("Error iniciando pago: HTTP ${response.code()}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Exception creating payment", e)
-            Result.failure(e)
+            Log.e(TAG, "❌ Error: ${e.message}")
+            ApiResult.Error("Error: ${e.message}")
         }
     }
 
     /**
-     * Get payment status by ID
+     * Obtener wallets de prueba
      */
-    suspend fun getPaymentStatus(paymentId: String): Result<PaymentStatusData> {
+    suspend fun getTestWallets(): ApiResult<String> {
         return try {
-            val token = getAuthToken() ?: return Result.failure(Exception("Usuario no autenticado"))
+            Log.d(TAG, "🧪 Obteniendo wallets de prueba...")
+            val response = apiService.getTestWallets()
 
-            when (val result = safeApiCall {
-                apiService.getPaymentStatus("Bearer $token", paymentId)
-            }) {
-                is ApiResult.Success -> {
-                    Result.success(result.data.data)
-                }
-
-                is ApiResult.Error -> {
-                    Result.failure(Exception(result.message))
-                }
-
-                is ApiResult.Loading -> {
-                    Result.failure(Exception("Unexpected loading state"))
-                }
+            if (response.isSuccessful) {
+                val walletsData = response.body()?.data
+                Log.d(TAG, "✅ Wallets disponibles: ${walletsData?.size}")
+                ApiResult.Success("${walletsData?.size} wallets de prueba disponibles")
+            } else {
+                Log.e(TAG, "❌ Error obteniendo wallets: ${response.code()}")
+                ApiResult.Error("Error obteniendo wallets: HTTP ${response.code()}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Exception getting payment status", e)
-            Result.failure(e)
-        }
-    }
-
-    /**
-     * Get user's payment pointer for a community
-     */
-    suspend fun getUserPaymentPointer(communityId: String): Result<PaymentPointerData> {
-        return try {
-            val token = getAuthToken() ?: return Result.failure(Exception("Usuario no autenticado"))
-
-            Log.d(TAG, "Getting payment pointer for community: $communityId")
-
-            when (val result = safeApiCall {
-                apiService.getUserPaymentPointer("Bearer $token", communityId)
-            }) {
-                is ApiResult.Success -> {
-                    Log.d(TAG, "Payment pointer retrieved: ${result.data.data.paymentPointer}")
-                    Result.success(result.data.data)
-                }
-
-                is ApiResult.Error -> {
-                    Log.e(TAG, "Error getting payment pointer: ${result.message}")
-                    Result.failure(Exception(result.message))
-                }
-
-                is ApiResult.Loading -> {
-                    Result.failure(Exception("Unexpected loading state"))
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Exception getting payment pointer", e)
-            Result.failure(e)
-        }
-    }
-
-    /**
-     * Get user's payment history
-     */
-    suspend fun getUserPaymentHistory(
-        limit: Int = 20,
-        offset: Int = 0
-    ): Result<List<PaymentStatusData>> {
-        return try {
-            val token = getAuthToken() ?: return Result.failure(Exception("Usuario no autenticado"))
-
-            when (val result = safeApiCall {
-                apiService.getUserPaymentHistory("Bearer $token", limit, offset)
-            }) {
-                is ApiResult.Success -> {
-                    Result.success(result.data.data.payments)
-                }
-
-                is ApiResult.Error -> {
-                    Result.failure(Exception(result.message))
-                }
-
-                is ApiResult.Loading -> {
-                    Result.failure(Exception("Unexpected loading state"))
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Exception getting payment history", e)
-            Result.failure(e)
-        }
-    }
-
-    /**
-     * Get payments for a community
-     */
-    suspend fun getCommunityPayments(communityId: String): Result<List<PaymentStatusData>> {
-        return try {
-            val token = getAuthToken() ?: return Result.failure(Exception("Usuario no autenticado"))
-
-            when (val result = safeApiCall {
-                apiService.getCommunityPayments("Bearer $token", communityId)
-            }) {
-                is ApiResult.Success -> {
-                    Result.success(result.data.data.payments)
-                }
-
-                is ApiResult.Error -> {
-                    Result.failure(Exception(result.message))
-                }
-
-                is ApiResult.Loading -> {
-                    Result.failure(Exception("Unexpected loading state"))
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Exception getting community payments", e)
-            Result.failure(e)
-        }
-    }
-
-    /**
-     * Validate a payment pointer
-     */
-    suspend fun validatePaymentPointer(paymentPointer: String): Result<ValidatePaymentPointerData> {
-        return try {
-            val token = getAuthToken() ?: return Result.failure(Exception("Usuario no autenticado"))
-
-            val request = ValidatePaymentPointerRequest(walletAddress = paymentPointer)
-
-            when (val result = safeApiCall {
-                apiService.validatePaymentPointer("Bearer $token", request)
-            }) {
-                is ApiResult.Success -> {
-                    result.data.data?.let { data ->
-                        Result.success(data)
-                    } ?: Result.failure(Exception("Invalid response"))
-                }
-
-                is ApiResult.Error -> {
-                    Result.failure(Exception(result.message))
-                }
-
-                is ApiResult.Loading -> {
-                    Result.failure(Exception("Unexpected loading state"))
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Exception validating payment pointer", e)
-            Result.failure(e)
+            Log.e(TAG, "❌ Error: ${e.message}")
+            ApiResult.Error("Error: ${e.message}")
         }
     }
 }

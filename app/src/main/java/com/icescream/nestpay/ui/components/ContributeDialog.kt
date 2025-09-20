@@ -13,7 +13,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -35,28 +34,6 @@ fun ContributeDialog(
     contributionViewModel: ContributionViewModel = viewModel()
 ) {
     var contributionAmount by remember { mutableStateOf("") }
-    var userPaymentPointer by remember { mutableStateOf("") }
-    var paymentPointerLoading by remember { mutableStateOf(true) }
-    var paymentPointerError by remember { mutableStateOf<String?>(null) }
-
-    // Fetch payment pointer when dialog shows
-    LaunchedEffect(showDialog, communityId) {
-        if (showDialog) {
-            contributionAmount = ""
-            paymentPointerLoading = true
-            paymentPointerError = null
-
-            contributionViewModel.getUserPaymentPointer(communityId) { result ->
-                result.onSuccess { paymentPointer ->
-                    userPaymentPointer = paymentPointer
-                    paymentPointerLoading = false
-                }.onFailure { exception ->
-                    paymentPointerError = exception.message ?: "Error al obtener payment pointer"
-                    paymentPointerLoading = false
-                }
-            }
-        }
-    }
 
     // Reset form when dialog shows
     LaunchedEffect(showDialog) {
@@ -145,59 +122,42 @@ fun ContributeDialog(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // Payment info
-                    if (paymentPointerLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            color = NestPayPrimary,
-                            strokeWidth = 2.dp
-                        )
-                    } else if (paymentPointerError != null) {
-                        Text(
-                            text = paymentPointerError ?: "Error desconocido",
-                            fontSize = 12.sp,
-                            color = Color.Red,
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
-                        )
-                    } else if (userPaymentPointer.isNotEmpty()) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = NestPayPrimary.copy(alpha = 0.1f)
-                            ),
-                            shape = RoundedCornerShape(8.dp)
+                    // Payment info - Simplified version
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = NestPayPrimary.copy(alpha = 0.1f)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.AccountCircle,
-                                    contentDescription = null,
-                                    tint = NestPayPrimary,
-                                    modifier = Modifier.size(20.dp)
+                            Icon(
+                                Icons.Default.AccountCircle,
+                                contentDescription = null,
+                                tint = NestPayPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "Pago vía:",
+                                    fontSize = 12.sp,
+                                    color = Color.Gray
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Column {
-                                    Text(
-                                        text = "Desde tu wallet:",
-                                        fontSize = 12.sp,
-                                        color = Color.Gray
-                                    )
-                                    Text(
-                                        text = userPaymentPointer,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = NestPayPrimary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
+                                Text(
+                                    text = "Open Payments (Backend Local)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = NestPayPrimary
+                                )
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(16.dp))
                     }
+
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     // Amount input
                     Column {
@@ -233,7 +193,7 @@ fun ContributeDialog(
                         Spacer(modifier = Modifier.height(4.dp))
 
                         Text(
-                            text = "El dinero se enviará directamente al administrador de la comunidad",
+                            text = "El pago se procesará a través del backend local con Open Payments",
                             fontSize = 11.sp,
                             color = Color.Gray
                         )

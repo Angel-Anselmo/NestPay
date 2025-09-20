@@ -5,6 +5,7 @@
         <!-- Localhost for emulator -->
         <domain includeSubdomains="true">10.0.2.2</domain>
         <!-- Local network addresses -->
+        <domain includeSubdomains="true">192.168.0.11</domain>
         <domain includeSubdomains="true">192.168.1.1</domain>
         <domain includeSubdomains="true">192.168.0.1</domain>
         <domain includeSubdomains="true">localhost</domain>

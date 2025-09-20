@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.icescream.nestpay.data.models.UserContribution
 import com.icescream.nestpay.data.repository.FirebaseContributionRepository
 import com.icescream.nestpay.data.repository.PaymentRepository
+import com.icescream.nestpay.network.ApiResult
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import android.util.Log
 
 // ==========================================
 // UI STATES
@@ -33,6 +35,10 @@ class ContributionViewModel(
     private val repository: FirebaseContributionRepository = FirebaseContributionRepository(),
     private val paymentRepository: PaymentRepository = PaymentRepository()
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "ContributionViewModel"
+    }
 
     // Contributions UI State
     private val _uiState = MutableStateFlow<ContributionUiState>(ContributionUiState.Loading)
@@ -69,7 +75,7 @@ class ContributionViewModel(
     }
 
     /**
-     * Create contribution using the new payment API flow
+     * Create contribution using the new payment API flow with backend
      */
     fun createContribution(
         conceptId: String,
@@ -78,41 +84,35 @@ class ContributionViewModel(
         userName: String
     ) {
         viewModelScope.launch {
-            println("🔍 ViewModel: Starting payment via API")
+            Log.d(TAG, "🔍 Iniciando pago via backend local")
             _createContributionState.value = CreateContributionState.Loading
 
-            // Use the payment repository to create payment through backend API
-            paymentRepository.createPayment(
-                amount = amount,
+            // Use the new payment repository method for community payments
+            when (val result = paymentRepository.initiateCommunityPayment(
+                amount = amount.toString(),
                 communityId = communityId,
                 conceptId = conceptId,
-                description = "Contribution to concept"
-            ).onSuccess { paymentData ->
-                println("✅ ViewModel: Payment created successfully via API: ${paymentData.paymentId}")
-                _createContributionState.value = CreateContributionState.Success
-                // Recargar las contribuciones para mostrar la nueva
-                loadContributionsForConcept(conceptId)
-            }.onFailure { exception ->
-                println("❌ ViewModel: Failed to create payment via API: ${exception.message}")
-                _createContributionState.value = CreateContributionState.Error(
-                    exception.message ?: "Error al procesar el pago"
-                )
-            }
-        }
-    }
+                description = "Aporte de $userName a concepto $conceptId"
+            )) {
+                is ApiResult.Success -> {
+                    Log.d(TAG, "✅ Pago iniciado exitosamente: ${result.data}")
+                    _createContributionState.value = CreateContributionState.Success
+                    // Recargar las contribuciones para mostrar la nueva
+                    loadContributionsForConcept(conceptId)
+                }
 
-    /**
-     * Get user's payment pointer for a community
-     */
-    fun getUserPaymentPointer(communityId: String, callback: (Result<String>) -> Unit) {
-        viewModelScope.launch {
-            paymentRepository.getUserPaymentPointer(communityId)
-                .onSuccess { paymentPointerData ->
-                    callback(Result.success(paymentPointerData.paymentPointer))
+                is ApiResult.Error -> {
+                    Log.e(TAG, "❌ Error al iniciar pago: ${result.message}")
+                    _createContributionState.value = CreateContributionState.Error(
+                        "Error al procesar el pago: ${result.message}"
+                    )
                 }
-                .onFailure { exception ->
-                    callback(Result.failure(exception))
+
+                is ApiResult.Loading -> {
+                    Log.d(TAG, "⏳ Procesando pago...")
+                    // Ya está en estado Loading
                 }
+            }
         }
     }
 

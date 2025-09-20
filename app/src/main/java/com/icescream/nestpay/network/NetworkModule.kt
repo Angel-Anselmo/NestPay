@@ -1,16 +1,18 @@
 package com.icescream.nestpay.network
 
+import com.icescream.nestpay.network.NestPayApiService
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
-object NetworkModule {
+// Backend URL - Local Development for Physical Device
+private const val BASE_URL = "http://192.168.0.11:3000/api/"
+// Para emulador usar: "http://10.0.2.2:3000/api/"
+// Railway Production (comentado): "https://nestpay-backend-production.up.railway.app/api/"
 
-    // Backend URL - Railway Production URL
-    private const val BASE_URL = "https://nestpay-backend-production.up.railway.app/api/"
-    // For local development, use: "http://10.0.2.2:3000/api/"
+object NetworkModule {
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY

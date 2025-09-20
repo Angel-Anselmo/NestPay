@@ -45,6 +45,7 @@ fun HomeScreen(
     onCreateCommunity: () -> Unit = {},
     onJoinCommunity: () -> Unit = {},
     onCommunityClick: (String) -> Unit = {},
+    onNavigateToTest: () -> Unit = {}, // Nueva función para navegar a test
     viewModel: com.icescream.nestpay.ui.viewmodel.CommunityViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     authViewModel: com.icescream.nestpay.ui.viewmodel.AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
@@ -91,6 +92,27 @@ fun HomeScreen(
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold
                     )
+                }
+
+                // Test button in top right corner
+                Card(
+                    onClick = onNavigateToTest,
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White.copy(alpha = 0.15f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .size(48.dp)
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "🧪",
+                            fontSize = 20.sp
+                        )
+                    }
                 }
             }
         }
