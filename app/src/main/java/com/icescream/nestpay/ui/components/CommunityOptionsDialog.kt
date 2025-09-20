@@ -33,6 +33,7 @@ fun CommunityOptionsDialog(
 ) {
     var showJoinForm by remember { mutableStateOf(false) }
     var inviteCode by remember { mutableStateOf("") }
+    var userPaymentPointer by remember { mutableStateOf("") }
     val joinState by viewModel.joinCommunityState.collectAsState()
 
     // Handle join success
@@ -49,6 +50,7 @@ fun CommunityOptionsDialog(
         if (!showDialog) {
             showJoinForm = false
             inviteCode = ""
+            userPaymentPointer = ""
             viewModel.resetJoinCommunityState()
         }
     }
@@ -312,13 +314,45 @@ fun CommunityOptionsDialog(
                             )
                         }
 
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "Puntero de pago del usuario",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.Black,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+
+                        OutlinedTextField(
+                            value = userPaymentPointer,
+                            onValueChange = { userPaymentPointer = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = {
+                                Text(
+                                    "\$ilp.interledger-test.dev/tu-wallet",
+                                    color = Color.Gray
+                                )
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NestPayPrimary,
+                                unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f),
+                                errorBorderColor = Color.Red
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Uri
+                            ),
+                            isError = joinState is JoinCommunityState.Error,
+                        )
+
                         Spacer(modifier = Modifier.height(32.dp))
 
                         // Join button
                         Button(
                             onClick = {
                                 // Use the viewModel to join community
-                                viewModel.joinCommunity(inviteCode)
+                                viewModel.joinCommunity(inviteCode, userPaymentPointer)
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -327,7 +361,7 @@ fun CommunityOptionsDialog(
                                 containerColor = Color(0xFF4CAF50)
                             ),
                             shape = RoundedCornerShape(25.dp),
-                            enabled = inviteCode.length == 6 && joinState !is JoinCommunityState.Loading
+                            enabled = inviteCode.length == 6 && userPaymentPointer.isNotEmpty() && joinState !is JoinCommunityState.Loading
                         ) {
                             if (joinState is JoinCommunityState.Loading) {
                                 CircularProgressIndicator(

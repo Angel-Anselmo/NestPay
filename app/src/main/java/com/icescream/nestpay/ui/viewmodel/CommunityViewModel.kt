@@ -112,11 +112,11 @@ class CommunityViewModel(
         }
     }
 
-    fun joinCommunity(inviteCode: String) {
+    fun joinCommunity(inviteCode: String, userPaymentPointer: String) {
         viewModelScope.launch {
             _joinCommunityState.value = JoinCommunityState.Loading
 
-            repository.joinCommunity(inviteCode)
+            repository.joinCommunity(inviteCode, userPaymentPointer)
                 .onSuccess {
                     _joinCommunityState.value = JoinCommunityState.Success
                     // Recargar todas las comunidades para mostrar la nueva comunidad

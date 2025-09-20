@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.icescream.nestpay.data.models.UserContribution
 import com.icescream.nestpay.data.repository.FirebaseContributionRepository
+import com.icescream.nestpay.data.repository.PaymentRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -29,7 +30,8 @@ sealed class CreateContributionState {
 // ==========================================
 
 class ContributionViewModel(
-    private val repository: FirebaseContributionRepository = FirebaseContributionRepository()
+    private val repository: FirebaseContributionRepository = FirebaseContributionRepository(),
+    private val paymentRepository: PaymentRepository = PaymentRepository()
 ) : ViewModel() {
 
     // Contributions UI State
@@ -66,6 +68,9 @@ class ContributionViewModel(
         }
     }
 
+    /**
+     * Create contribution using the new payment API flow
+     */
     fun createContribution(
         conceptId: String,
         communityId: String,
@@ -73,25 +78,41 @@ class ContributionViewModel(
         userName: String
     ) {
         viewModelScope.launch {
-            println("🔍 ViewModel: Starting contribution creation")
+            println("🔍 ViewModel: Starting payment via API")
             _createContributionState.value = CreateContributionState.Loading
 
-            repository.createContribution(
-                conceptId = conceptId,
-                communityId = communityId,
+            // Use the payment repository to create payment through backend API
+            paymentRepository.createPayment(
                 amount = amount,
-                userName = userName
-            ).onSuccess {
-                println("✅ ViewModel: Contribution created successfully")
+                communityId = communityId,
+                conceptId = conceptId,
+                description = "Contribution to concept"
+            ).onSuccess { paymentData ->
+                println("✅ ViewModel: Payment created successfully via API: ${paymentData.paymentId}")
                 _createContributionState.value = CreateContributionState.Success
                 // Recargar las contribuciones para mostrar la nueva
                 loadContributionsForConcept(conceptId)
             }.onFailure { exception ->
-                println("❌ ViewModel: Failed to create contribution: ${exception.message}")
+                println("❌ ViewModel: Failed to create payment via API: ${exception.message}")
                 _createContributionState.value = CreateContributionState.Error(
-                    exception.message ?: "Error al crear la contribución"
+                    exception.message ?: "Error al procesar el pago"
                 )
             }
+        }
+    }
+
+    /**
+     * Get user's payment pointer for a community
+     */
+    fun getUserPaymentPointer(communityId: String, callback: (Result<String>) -> Unit) {
+        viewModelScope.launch {
+            paymentRepository.getUserPaymentPointer(communityId)
+                .onSuccess { paymentPointerData ->
+                    callback(Result.success(paymentPointerData.paymentPointer))
+                }
+                .onFailure { exception ->
+                    callback(Result.failure(exception))
+                }
         }
     }
 

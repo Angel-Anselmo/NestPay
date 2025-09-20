@@ -125,6 +125,7 @@ fun CommunityDetailsScreen(
                 showDialog = showContributeDialog,
                 concept = selectedConceptToContribute!!,
                 userName = "Usuario", // TODO: Get actual user name
+                communityId = community.id, // Add community ID for payment pointer
                 onDismiss = {
                     showContributeDialog = false
                     selectedConceptToContribute = null
@@ -671,7 +672,8 @@ private fun PaymentConceptsSection(
                                     color = Color.Gray
                                 )
                                 Button(
-                                    onClick = { onContributeClick(concept) },
+                                    // onClick = { onContributeClick(concept) },
+                                    onClick = { concept },
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = NestPayPrimary,
                                         contentColor = Color.White

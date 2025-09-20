@@ -23,27 +23,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.icescream.nestpay.ui.components.BottomNavItem
 import com.icescream.nestpay.ui.theme.*
+import com.icescream.nestpay.data.models.Community
 import java.text.SimpleDateFormat
 import java.util.*
 
-data class PaymentCommunity(
-    val id: String,
-    val name: String,
-    val description: String,
-    val targetAmount: Double,
-    val currentAmount: Double,
-    val memberCount: Int,
-    val dueDate: String,
+// Data class for UI display of communities
+data class CommunityDisplayData(
+    val community: Community,
     val color: Color,
     val icon: ImageVector,
-    val status: CommunityStatus = CommunityStatus.ACTIVE,
-    val createdBy: String,
-    val walletAddress: String // Interledger wallet address for the community goal
+    val memberCount: Int,
+    val formattedDate: String
 )
-
-enum class CommunityStatus {
-    ACTIVE, COMPLETED, PAUSED
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,12 +43,17 @@ fun HomeScreen(
     onNavigateToNotifications: () -> Unit = {},
     onNavigateToProfile: () -> Unit = {},
     onCreateCommunity: () -> Unit = {},
+    onJoinCommunity: () -> Unit = {},
+    onCommunityClick: (String) -> Unit = {},
     viewModel: com.icescream.nestpay.ui.viewmodel.CommunityViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     authViewModel: com.icescream.nestpay.ui.viewmodel.AuthViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val authState by authViewModel.authState.collectAsState()
+
+    // State for showing the action sheet
+    var showActionSheet by remember { mutableStateOf(false) }
 
     // Obtener información del usuario
     val userName = when (val currentAuthState = authState) {
@@ -246,7 +242,10 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(currentState.communities) { community ->
-                        CommunityCard(community = community)
+                        CommunityCard(
+                            communityData = convertToDisplayData(community),
+                            onCommunityClick = onCommunityClick
+                        )
                     }
 
                     // Show empty state message if no communities
@@ -330,7 +329,7 @@ fun HomeScreen(
 
                 // FAB in center
                 FloatingActionButton(
-                    onClick = onCreateCommunity,
+                    onClick = { showActionSheet = true },
                     containerColor = NestPayPrimary,
                     contentColor = Color.White,
                     modifier = Modifier.size(56.dp)
@@ -357,14 +356,142 @@ fun HomeScreen(
             }
         }
     }
+
+    if (showActionSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showActionSheet = false }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = "¿Qué quieres hacer?",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                // Create Community Option
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showActionSheet = false
+                            onCreateCommunity()
+                        },
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(
+                                    NestPayPrimary.copy(alpha = 0.1f),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = null,
+                                tint = NestPayPrimary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                text = "Crear Comunidad",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.Black
+                            )
+                            Text(
+                                text = "Crea tu propia comunidad de pagos",
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Join Community Option
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showActionSheet = false
+                            onJoinCommunity()
+                        },
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(
+                                    Color(0xFF4CAF50).copy(alpha = 0.1f),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = Color(0xFF4CAF50),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                text = "Unirse a Comunidad",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.Black
+                            )
+                            Text(
+                                text = "Únete usando un código de invitación",
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
 }
 
 @Composable
-fun CommunityCard(community: PaymentCommunity) {
-    val progress = (community.currentAmount / community.targetAmount).coerceIn(0.0, 1.0)
+fun CommunityCard(communityData: CommunityDisplayData, onCommunityClick: (String) -> Unit) {
+    val community = communityData.community
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCommunityClick(community.id) },
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         shape = RoundedCornerShape(16.dp)
@@ -380,13 +507,13 @@ fun CommunityCard(community: PaymentCommunity) {
                     modifier = Modifier
                         .size(48.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(community.color.copy(alpha = 0.1f)),
+                        .background(communityData.color.copy(alpha = 0.1f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        community.icon,
+                        communityData.icon,
                         contentDescription = null,
-                        tint = community.color,
+                        tint = communityData.color,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -419,13 +546,22 @@ fun CommunityCard(community: PaymentCommunity) {
                         .size(12.dp)
                         .clip(CircleShape)
                         .background(
-                            when (community.status) {
-                                CommunityStatus.COMPLETED -> Color(0xFF4CAF50)
-                                CommunityStatus.PAUSED -> AccentOrange
-                                CommunityStatus.ACTIVE -> NestPayPrimary
-                            }
+                            if (community.isActive) NestPayPrimary else Color.Gray
                         )
                 )
+
+                // More options button
+                IconButton(
+                    onClick = { /* TODO: Show more options */ },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.MoreVert,
+                        contentDescription = "Más opciones",
+                        tint = Color.Gray,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -436,19 +572,19 @@ fun CommunityCard(community: PaymentCommunity) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "${community.memberCount} miembros",
+                    text = "${communityData.memberCount} miembros",
                     fontSize = 12.sp,
                     color = Color.Gray
                 )
                 Text(
-                    text = "Meta: $${community.targetAmount.toInt()}",
+                    text = "Categoría: ${community.category}",
                     fontSize = 12.sp,
                     color = Color.Gray
                 )
             }
 
             Text(
-                text = "Vence: ${community.dueDate}",
+                text = "Creado: ${communityData.formattedDate}",
                 fontSize = 12.sp,
                 color = Color.Gray,
                 modifier = Modifier.padding(top = 2.dp)
@@ -456,39 +592,75 @@ fun CommunityCard(community: PaymentCommunity) {
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Progress indicator
+            // Invite code display
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                LinearProgressIndicator(
-                    progress = progress.toFloat(),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = community.color,
-                    trackColor = community.color.copy(alpha = 0.2f)
+                Text(
+                    text = "Código: ${community.inviteCode}",
+                    fontSize = 12.sp,
+                    color = NestPayPrimary,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f)
                 )
 
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Text(
-                    text = "${(progress * 100).toInt()}%",
-                    fontSize = 12.sp,
-                    color = Color.Gray,
-                    fontWeight = FontWeight.Medium
+                Icon(
+                    Icons.Default.Share,
+                    contentDescription = "Compartir código",
+                    tint = NestPayPrimary,
+                    modifier = Modifier.size(16.dp)
                 )
             }
-
-            // Current amount text
-            Text(
-                text = "Recaudado: $${community.currentAmount.toInt()}",
-                fontSize = 12.sp,
-                color = Color.Gray,
-                modifier = Modifier.padding(top = 4.dp)
-            )
         }
+    }
+}
+
+// Helper function to convert Community to display data
+@Composable
+private fun convertToDisplayData(community: Community): CommunityDisplayData {
+    val color = getCommunityColor(community.category)
+    val icon = getCommunityIcon(community.category)
+    val memberCount = community.members.size
+    val formattedDate = formatDate(community.createdAt)
+
+    return CommunityDisplayData(
+        community = community,
+        color = color,
+        icon = icon,
+        memberCount = memberCount,
+        formattedDate = formattedDate
+    )
+}
+
+// Helper functions
+private fun getCommunityColor(category: String): Color {
+    return when (category.uppercase()) {
+        "CASA" -> Color(0xFF4CAF50)
+        "VIAJE" -> Color(0xFF2196F3)
+        "TRABAJO" -> Color(0xFFFF9800)
+        "AMIGOS" -> Color(0xFFE91E63)
+        "FAMILIA" -> Color(0xFF9C27B0)
+        else -> NestPayPrimary
+    }
+}
+
+private fun getCommunityIcon(category: String): ImageVector {
+    return when (category.uppercase()) {
+        "CASA" -> Icons.Default.Home
+        "VIAJE" -> Icons.Default.Place
+        "TRABAJO" -> Icons.Default.Settings
+        "AMIGOS" -> Icons.Default.Person
+        "FAMILIA" -> Icons.Default.Favorite
+        else -> Icons.Default.AccountCircle
+    }
+}
+
+private fun formatDate(date: Date?): String {
+    return if (date != null) {
+        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(date)
+    } else {
+        "Fecha no disponible"
     }
 }
 

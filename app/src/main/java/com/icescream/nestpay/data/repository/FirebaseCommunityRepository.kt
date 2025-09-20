@@ -120,7 +120,7 @@ class FirebaseCommunityRepository {
         return (1..6).map { chars.random() }.joinToString("")
     }
 
-    suspend fun joinCommunity(inviteCode: String): Result<Community> {
+    suspend fun joinCommunity(inviteCode: String, userPaymentPointer: String): Result<Community> {
         return try {
             Log.d(TAG, "Attempting to join community with invite code: $inviteCode")
 
@@ -168,6 +168,11 @@ class FirebaseCommunityRepository {
                 return Result.failure(Exception("Ya eres miembro de esta comunidad"))
             }
 
+            // Validate payment pointer format (basic validation)
+            if (!userPaymentPointer.startsWith("$") && !userPaymentPointer.startsWith("https://")) {
+                return Result.failure(Exception("Formato de payment pointer inválido"))
+            }
+
             // Add user to members list
             val updatedMembers = communityData.members + currentUser.uid
             Log.d(TAG, "Updated members list: $updatedMembers")
@@ -179,7 +184,24 @@ class FirebaseCommunityRepository {
 
             document.reference.update(updateData).await()
 
-            Log.d(TAG, "User ${currentUser.uid} successfully joined community ${document.id}")
+            // Save user's payment pointer for this community
+            val memberData = mapOf(
+                "userId" to currentUser.uid,
+                "communityId" to document.id,
+                "paymentPointer" to userPaymentPointer,
+                "role" to "member",
+                "joinedAt" to com.google.firebase.Timestamp.now()
+            )
+
+            firestore.collection("communityMembers")
+                .document("${document.id}_${currentUser.uid}")
+                .set(memberData)
+                .await()
+
+            Log.d(
+                TAG,
+                "User ${currentUser.uid} successfully joined community ${document.id} with payment pointer: $userPaymentPointer"
+            )
 
             // Return the updated community
             val updatedCommunity = communityData.copy(

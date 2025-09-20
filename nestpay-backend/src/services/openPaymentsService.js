@@ -1,383 +1,467 @@
-const { createAuthenticatedClient } = require('@interledger/open-payments');
-const { v4: uuidv4 } = require('uuid');
+import { createAuthenticatedClient } from '@interledger/open-payments';
+import { logger } from '../utils/logger.js';
+import { v4 as uuidv4 } from 'uuid';
 
 class OpenPaymentsService {
   constructor() {
-    this.baseUrl = process.env.OPEN_PAYMENTS_BASE_URL || 'https://wallet.interledger-test.dev';
-    this.defaultWalletAddress = process.env.DEFAULT_WALLET_ADDRESS;
-    this.clients = new Map(); // Cache for authenticated clients
+    this.adminClient = null;
+    this.userClient = null;
+    this.isAdminInitialized = false;
+    this.isUserInitialized = false;
   }
 
-  /**
-   * Create an authenticated client for a wallet address
-   */
-  async createClient(walletAddress, privateKey) {
+  async initializeAdmin() {
     try {
-      // Si no se proporciona una clave privada específica, intentar determinar cuál usar
-      if (!privateKey) {
-        privateKey = this.getPrivateKeyForWallet(walletAddress);
+      if (!process.env.ADMIN_WALLET_ADDRESS_URL || !process.env.ADMIN_PRIVATE_KEY_PATH || !process.env.ADMIN_KEY_ID) {
+        throw new Error('Faltan variables de entorno requeridas para Open Payments ADMIN');
       }
 
-      // Validar que tenemos una clave privada
-      if (!privateKey) {
-        throw new Error('No private key available for wallet: ' + walletAddress);
-      }
-
-      console.log(`Creating client for wallet: ${walletAddress}`);
-      console.log(`Using private key format: ${privateKey.substring(0, 50)}...`);
-
-      // Convertir la clave privada a Buffer si es necesario
-      let keyBuffer;
-      if (typeof privateKey === 'string') {
-        // Si la clave incluye los headers, extraer solo la parte base64
-        const keyContent = privateKey
-          .replace(/-----BEGIN PRIVATE KEY-----/, '')
-          .replace(/-----END PRIVATE KEY-----/, '')
-          .replace(/\\n/g, '')
-          .replace(/\n/g, '')
-          .replace(/\s/g, '');
-        
-        keyBuffer = Buffer.from(keyContent, 'base64');
-      } else {
-        keyBuffer = privateKey;
-      }
-
-      const client = await createAuthenticatedClient({
-        walletAddressUrl: walletAddress,
-        privateKey: keyBuffer,
+      this.adminClient = await createAuthenticatedClient({
+        walletAddressUrl: process.env.ADMIN_WALLET_ADDRESS_URL,
+        privateKey: process.env.ADMIN_PRIVATE_KEY_PATH,
+        keyId: process.env.ADMIN_KEY_ID,
       });
 
-      this.clients.set(walletAddress, client);
-      console.log(`✅ Client created successfully for ${walletAddress}`);
-      return client;
+      this.isAdminInitialized = true;
+      logger.info('✅ Cliente Open Payments ADMIN inicializado correctamente');
+      return this.adminClient;
     } catch (error) {
-      console.error('Error creating Open Payments client:', error);
-      throw new Error(`Failed to create client for ${walletAddress}: ${error.message}`);
+      logger.error('❌ Error inicializando cliente Open Payments ADMIN:', error);
+      throw error;
     }
   }
 
-  /**
-   * Determine which private key to use for a given wallet address
-   */
-  getPrivateKeyForWallet(walletAddress) {
-    console.log(`🔍 Determining private key for wallet: ${walletAddress}`);
-    
-    // Lógica para determinar qué clave privada usar
-    // Esto podría basarse en la URL de la wallet o en una configuración
-    
-    if (walletAddress.includes('admin') || walletAddress === process.env.DEFAULT_WALLET_ADDRESS) {
-      console.log(`📝 Using ADMIN_WALLET_PRIVATE_KEY for ${walletAddress}`);
-      return process.env.ADMIN_WALLET_PRIVATE_KEY || process.env.PRIVATE_KEY;
-    } else if (walletAddress.includes('user')) {
-      console.log(`📝 Using USER_WALLET_PRIVATE_KEY for ${walletAddress}`);
-      return process.env.USER_WALLET_PRIVATE_KEY || process.env.PRIVATE_KEY;
+  async initializeUser() {
+    try {
+      if (!process.env.USER_WALLET_ADDRESS_URL || !process.env.USER_PRIVATE_KEY_PATH || !process.env.USER_KEY_ID) {
+        throw new Error('Faltan variables de entorno requeridas para Open Payments USER');
+      }
+
+      this.userClient = await createAuthenticatedClient({
+        walletAddressUrl: process.env.USER_WALLET_ADDRESS_URL,
+        privateKey: process.env.USER_PRIVATE_KEY_PATH,
+        keyId: process.env.USER_KEY_ID,
+      });
+
+      this.isUserInitialized = true;
+      logger.info('✅ Cliente Open Payments USER inicializado correctamente');
+      return this.userClient;
+    } catch (error) {
+      logger.error('❌ Error inicializando cliente Open Payments USER:', error);
+      throw error;
     }
-    
-    // Para wallets específicas, podemos usar una lógica más específica
-    if (walletAddress.includes('wallettest1')) {
-      console.log(`📝 Using USER_WALLET_PRIVATE_KEY for wallettest1`);
-      return process.env.USER_WALLET_PRIVATE_KEY || process.env.PRIVATE_KEY;
-    } else if (walletAddress.includes('wallettest')) {
-      console.log(`📝 Using ADMIN_WALLET_PRIVATE_KEY for wallettest`);
-      return process.env.ADMIN_WALLET_PRIVATE_KEY || process.env.PRIVATE_KEY;
-    }
-    
-    // Fallback a la clave privada por defecto
-    console.log(`📝 Using default PRIVATE_KEY for ${walletAddress}`);
-    return process.env.PRIVATE_KEY;
   }
 
-  /**
-   * Get or create a client for a wallet address
-   */
-  async getClient(walletAddress, privateKey) {
-    if (this.clients.has(walletAddress)) {
-      return this.clients.get(walletAddress);
+  async ensureAdminInitialized() {
+    if (!this.isAdminInitialized) {
+      await this.initializeAdmin();
     }
-    return await this.createClient(walletAddress, privateKey);
+    return this.adminClient;
   }
 
-  /**
-   * Get wallet address information
-   */
+  async ensureUserInitialized() {
+    if (!this.isUserInitialized) {
+      await this.initializeUser();
+    }
+    return this.userClient;
+  }
+
+  // =================== WALLET ADDRESSES ===================
+
   async getWalletAddress(walletAddressUrl) {
     try {
-      const client = await this.getClient(walletAddressUrl);
+      // Usar admin client para operaciones generales de wallet
+      const client = await this.ensureAdminInitialized();
       const walletAddress = await client.walletAddress.get({
         url: walletAddressUrl
       });
 
-      return {
-        id: walletAddress.id,
-        url: walletAddress.url,
-        assetCode: walletAddress.assetCode,
-        assetScale: walletAddress.assetScale,
-        authServer: walletAddress.authServer,
-        resourceServer: walletAddress.resourceServer
-      };
+      logger.info(`✅ Wallet address obtenida: ${walletAddressUrl}`);
+      return walletAddress;
     } catch (error) {
-      console.error('Error getting wallet address:', error);
-      throw new Error(`Failed to get wallet address: ${error.message}`);
+      logger.error(`❌ Error obteniendo wallet address ${walletAddressUrl}:`, error);
+      throw error;
     }
   }
 
-  /**
-   * Create an incoming payment (for receiving money)
-   */
-  async createIncomingPayment(receiverWalletAddress, amount, description = '') {
+  async validateWalletAddress(walletAddressUrl) {
     try {
-      const client = await this.getClient(receiverWalletAddress);
-      const grantToken = await this.getGrantToken(receiverWalletAddress, 'incoming-payment');
-      
-      const requestOptions = {
-        walletAddressUrl: receiverWalletAddress
+      const walletAddress = await this.getWalletAddress(walletAddressUrl);
+      return {
+        isValid: true,
+        walletAddress,
+        authServer: walletAddress.authServer,
+        resourceServer: walletAddress.resourceServer || walletAddressUrl
       };
+    } catch (error) {
+      return {
+        isValid: false,
+        error: error.message
+      };
+    }
+  }
 
-      // Solo agregar accessToken si tenemos un grant token válido
-      if (grantToken) {
-        requestOptions.accessToken = grantToken;
-      }
+  // =================== ADMIN OPERATIONS (Crear comunidades/conceptos) ===================
+
+  async createCommunityIncomingPayment(amount, description = 'Aporte a comunidad NestPay') {
+    try {
+      const client = await this.ensureAdminInitialized();
+      const adminWalletUrl = process.env.ADMIN_WALLET_ADDRESS_URL;
+      const walletAddress = await this.getWalletAddress(adminWalletUrl);
       
-      const incomingPayment = await client.incomingPayment.create(
-        requestOptions,
+      if (!walletAddress.authServer) {
+        throw new Error('Admin wallet no tiene servidor de autorización configurado');
+      }
+
+      // Solicitar grant para el admin
+      const grant = await client.grant.request(
+        { url: walletAddress.authServer },
         {
+          access_token: {
+            access: [
+              {
+                type: 'incoming-payment',
+                actions: ['list', 'read', 'read-all', 'complete', 'create'],
+                identifier: adminWalletUrl
+              }
+            ]
+          }
+        }
+      );
+
+      if (!grant.access_token?.value) {
+        throw new Error('No se pudo obtener el token de acceso para admin incoming payment');
+      }
+
+      // Crear incoming payment en la wallet del admin
+      const incomingPayment = await client.incomingPayment.create(
+        {
+          url: adminWalletUrl,
+          accessToken: grant.access_token.value
+        },
+        {
+          walletAddress: adminWalletUrl,
           incomingAmount: {
-            value: amount.toString(),
-            assetCode: 'USD',
-            assetScale: 2
+            value: amount.value.toString(),
+            assetCode: amount.assetCode || walletAddress.assetCode,
+            assetScale: amount.assetScale || walletAddress.assetScale
           },
           metadata: {
-            description: description,
-            source: 'NestPay',
-            createdAt: new Date().toISOString()
+            description,
+            createdBy: 'NestPay-Admin',
+            type: 'community-contribution',
+            timestamp: new Date().toISOString()
           }
         }
       );
 
+      logger.info(`✅ Incoming payment para comunidad creado: ${incomingPayment.id}`);
       return {
-        id: incomingPayment.id,
-        walletAddress: incomingPayment.walletAddress,
-        completed: incomingPayment.completed,
-        incomingAmount: incomingPayment.incomingAmount,
-        receivedAmount: incomingPayment.receivedAmount,
-        metadata: incomingPayment.metadata,
-        createdAt: incomingPayment.createdAt,
-        updatedAt: incomingPayment.updatedAt
+        incomingPayment,
+        grant,
+        walletAddress,
+        adminWallet: adminWalletUrl
       };
     } catch (error) {
-      console.error('Error creating incoming payment:', error);
-      throw new Error(`Failed to create incoming payment: ${error.message}`);
+      logger.error('❌ Error creando incoming payment para comunidad:', error);
+      throw error;
     }
   }
 
-  /**
-   * Create an outgoing payment (for sending money)
-   */
-  async createOutgoingPayment(senderWalletAddress, receiverWalletAddress, amount, description = '') {
+  // =================== USER OPERATIONS (Pagar aportes) ===================
+
+  async createUserPaymentQuote(receiverPaymentUrl, amount) {
     try {
-      const client = await this.getClient(senderWalletAddress);
-
-      // First, create an incoming payment on the receiver's wallet
-      const incomingPayment = await this.createIncomingPayment(
-        receiverWalletAddress,
-        amount,
-        description
-      );
-
-      const grantToken = await this.getGrantToken(senderWalletAddress, 'outgoing-payment');
+      const client = await this.ensureUserInitialized();
+      const userWalletUrl = process.env.USER_WALLET_ADDRESS_URL;
+      const walletAddress = await this.getWalletAddress(userWalletUrl);
       
-      const requestOptions = {
-        walletAddressUrl: senderWalletAddress
-      };
-
-      // Solo agregar accessToken si tenemos un grant token válido
-      if (grantToken) {
-        requestOptions.accessToken = grantToken;
+      if (!walletAddress.authServer) {
+        throw new Error('User wallet no tiene servidor de autorización configurado');
       }
 
-      // Then create the outgoing payment
-      const outgoingPayment = await client.outgoingPayment.create(
-        requestOptions,
+      // Solicitar grant de quote para el usuario
+      const grant = await client.grant.request(
+        { url: walletAddress.authServer },
         {
-          walletAddress: senderWalletAddress,
-          quoteId: await this.createQuote(senderWalletAddress, incomingPayment.id, amount),
-          metadata: {
-            description: description,
-            source: 'NestPay',
-            incomingPaymentId: incomingPayment.id,
-            createdAt: new Date().toISOString()
+          access_token: {
+            access: [
+              {
+                type: 'quote',
+                actions: ['create', 'read', 'read-all'],
+                identifier: userWalletUrl
+              }
+            ]
           }
         }
       );
 
-      return {
-        id: outgoingPayment.id,
-        walletAddress: outgoingPayment.walletAddress,
-        receiver: incomingPayment.id,
-        debitAmount: outgoingPayment.debitAmount,
-        receiveAmount: outgoingPayment.receiveAmount,
-        metadata: outgoingPayment.metadata,
-        state: outgoingPayment.state,
-        createdAt: outgoingPayment.createdAt,
-        incomingPayment: incomingPayment
-      };
-    } catch (error) {
-      console.error('Error creating outgoing payment:', error);
-      throw new Error(`Failed to create outgoing payment: ${error.message}`);
-    }
-  }
-
-  /**
-   * Create a quote for payment estimation
-   */
-  async createQuote(walletAddress, receiver, amount) {
-    try {
-      const client = await this.getClient(walletAddress);
-      const grantToken = await this.getGrantToken(walletAddress, 'quote');
-      
-      const requestOptions = {
-        walletAddressUrl: walletAddress
-      };
-
-      // Solo agregar accessToken si tenemos un grant token válido
-      if (grantToken) {
-        requestOptions.accessToken = grantToken;
+      if (!grant.access_token?.value) {
+        throw new Error('No se pudo obtener el token de acceso para user quote');
       }
-      
+
+      // Crear quote desde la wallet del usuario
       const quote = await client.quote.create(
-        requestOptions,
         {
-          walletAddress: walletAddress,
-          receiver: receiver,
+          url: userWalletUrl,
+          accessToken: grant.access_token.value
+        },
+        {
+          walletAddress: userWalletUrl,
+          receiver: receiverPaymentUrl,
           method: 'ilp',
-          debitAmount: {
-            value: amount.toString(),
-            assetCode: 'USD',
-            assetScale: 2
+          sendAmount: {
+            value: amount.value.toString(),
+            assetCode: amount.assetCode || walletAddress.assetCode,
+            assetScale: amount.assetScale || walletAddress.assetScale
           }
         }
       );
 
-      return quote.id;
-    } catch (error) {
-      console.error('Error creating quote:', error);
-      throw new Error(`Failed to create quote: ${error.message}`);
-    }
-  }
-
-  /**
-   * Get payment status
-   */
-  async getPaymentStatus(walletAddress, paymentId, type = 'outgoing') {
-    try {
-      const client = await this.getClient(walletAddress);
-      
-      let payment;
-      if (type === 'outgoing') {
-        payment = await client.outgoingPayment.get({
-          url: paymentId
-        });
-      } else {
-        payment = await client.incomingPayment.get({
-          url: paymentId
-        });
-      }
-
+      logger.info(`✅ Quote de usuario creado: ${quote.id}`);
       return {
-        id: payment.id,
-        state: payment.state || (payment.completed ? 'COMPLETED' : 'PENDING'),
-        amount: payment.receiveAmount || payment.receivedAmount,
-        createdAt: payment.createdAt,
-        updatedAt: payment.updatedAt,
-        metadata: payment.metadata
+        quote,
+        grant,
+        walletAddress,
+        userWallet: userWalletUrl
       };
     } catch (error) {
-      console.error('Error getting payment status:', error);
-      throw new Error(`Failed to get payment status: ${error.message}`);
+      logger.error('❌ Error creando quote de usuario:', error);
+      throw error;
     }
   }
 
-  /**
-   * Get grant token for specific operations
-   */
-  async getGrantToken(walletAddress, access) {
+  async requestUserOutgoingPaymentGrant(receiverPaymentUrl, amount) {
     try {
-      // Intentar obtener el token de las variables de entorno
-      const tokenKey = `GRANT_TOKEN_${access.toUpperCase().replace('-', '_')}`;
-      const token = process.env[tokenKey];
+      const client = await this.ensureUserInitialized();
+      const userWalletUrl = process.env.USER_WALLET_ADDRESS_URL;
+      const walletAddress = await this.getWalletAddress(userWalletUrl);
       
-      if (token && token.trim() !== '') {
-        return token;
-      }
+      const grant = await client.grant.request(
+        { url: walletAddress.authServer },
+        {
+          access_token: {
+            access: [
+              {
+                type: 'outgoing-payment',
+                actions: ['create', 'read', 'read-all', 'list', 'list-all'],
+                identifier: userWalletUrl,
+                limits: {
+                  receiver: receiverPaymentUrl,
+                  debitAmount: {
+                    value: amount.value.toString(),
+                    assetCode: amount.assetCode,
+                    assetScale: amount.assetScale
+                  }
+                }
+              }
+            ]
+          },
+          interact: {
+            start: ['redirect']
+          }
+        }
+      );
 
-      // Si no hay token configurado, intentar crear un grant dinámicamente
-      // En el entorno de test de Interledger, algunos endpoints pueden funcionar sin grants explícitos
-      console.warn(`No grant token found for ${access}. Attempting to use client authentication.`);
-      
-      // Para el entorno de test, podemos intentar usar el cliente autenticado directamente
-      // sin un grant token específico
-      return null;
-      
+      logger.info(`✅ Grant interactivo de outgoing payment para usuario solicitado`);
+      return grant;
     } catch (error) {
-      console.error('Error getting grant token:', error);
-      console.warn(`Falling back to no grant token for ${access}`);
-      return null;
+      logger.error('❌ Error solicitando grant interactivo de outgoing payment para usuario:', error);
+      throw error;
     }
   }
 
-  /**
-   * Validate wallet address format
-   */
-  isValidWalletAddress(walletAddress) {
+  async createUserOutgoingPayment(quoteId, accessToken, metadata = {}) {
     try {
-      const url = new URL(walletAddress);
-      return url.protocol === 'https:' && url.hostname.includes('interledger');
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Create a payment request for NestPay community payments
-   */
-  async createCommunityPayment(fromWallet, toWallet, amount, communityId, conceptId, description) {
-    try {
-      const paymentId = uuidv4();
+      const client = await this.ensureUserInitialized();
+      const userWalletUrl = process.env.USER_WALLET_ADDRESS_URL;
       
-      console.log(`Creating community payment ${paymentId}:`, {
-        from: fromWallet,
-        to: toWallet,
-        amount,
-        communityId,
-        conceptId
+      const outgoingPayment = await client.outgoingPayment.create(
+        {
+          url: userWalletUrl,
+          accessToken
+        },
+        {
+          walletAddress: userWalletUrl,
+          quoteId,
+          metadata: {
+            ...metadata,
+            createdBy: 'NestPay-User',
+            type: 'community-contribution-payment',
+            timestamp: new Date().toISOString()
+          }
+        }
+      );
+
+      logger.info(`✅ Outgoing payment de usuario creado: ${outgoingPayment.id}`);
+      return outgoingPayment;
+    } catch (error) {
+      logger.error('❌ Error creando outgoing payment de usuario:', error);
+      throw error;
+    }
+  }
+
+  // =================== FLUJO COMPLETO NESTPAY ===================
+
+  async createCommunityContributionFlow(amount, description = 'Aporte a comunidad NestPay') {
+    try {
+      logger.info(`🏢 Iniciando flujo de aporte a comunidad - Monto: ${amount.value}`);
+      
+      // 1. ADMIN: Crear incoming payment en la wallet del admin para recibir aportes
+      const adminIncomingPayment = await this.createCommunityIncomingPayment(amount, description);
+
+      // 2. USER: Crear quote desde la wallet del usuario hacia el incoming payment del admin
+      const userQuote = await this.createUserPaymentQuote(
+        adminIncomingPayment.incomingPayment.id,
+        amount
+      );
+
+      // 3. USER: Solicitar grant interactivo para que el usuario autorice el pago
+      const userOutgoingGrant = await this.requestUserOutgoingPaymentGrant(
+        adminIncomingPayment.incomingPayment.id,
+        {
+          value: userQuote.quote.sendAmount.value,
+          assetCode: userQuote.quote.sendAmount.assetCode,
+          assetScale: userQuote.quote.sendAmount.assetScale
+        }
+      );
+
+      const result = {
+        // Datos del admin (receptor)
+        adminWallet: process.env.ADMIN_WALLET_ADDRESS_URL,
+        incomingPayment: adminIncomingPayment.incomingPayment,
+        
+        // Datos del usuario (pagador)
+        userWallet: process.env.USER_WALLET_ADDRESS_URL,
+        quote: userQuote.quote,
+        
+        // Flujo de autorización
+        authorizationUrl: userOutgoingGrant.interact?.redirect,
+        
+        // Datos para continuar el flujo
+        continueData: {
+          continueUri: userOutgoingGrant.continue?.uri,
+          continueAccessToken: userOutgoingGrant.continue?.access_token?.value,
+          finishInteractionUrl: `${process.env.BASE_URL}/api/payments/grant-callback`,
+          state: uuidv4()
+        },
+        
+        // Estimación de costos
+        estimatedFees: {
+          sendAmount: userQuote.quote.sendAmount,
+          receiveAmount: userQuote.quote.receiveAmount
+        }
+      };
+
+      logger.info(`✅ Flujo de aporte a comunidad preparado. URL de autorización: ${result.authorizationUrl}`);
+      return result;
+
+    } catch (error) {
+      logger.error('❌ Error en flujo de aporte a comunidad:', error);
+      throw error;
+    }
+  }
+
+  async finalizeCommunityPayment(continueUri, continueAccessToken, interactRef, quoteId) {
+    try {
+      logger.info('🔄 Finalizando pago de aporte a comunidad...');
+
+      const userClient = await this.ensureUserInitialized();
+
+      // 1. Continuar el grant con la referencia de interacción
+      const finalGrant = await userClient.grant.continue({
+        accessToken: continueAccessToken,
+        url: continueUri
+      }, {
+        interact_ref: interactRef
       });
 
-      // Create the payment
-      const payment = await this.createOutgoingPayment(
-        fromWallet,
-        toWallet,
-        amount,
-        `NestPay - ${description} (Community: ${communityId}, Concept: ${conceptId})`
+      if (!finalGrant.access_token?.value) {
+        throw new Error('No se pudo obtener el token de acceso final para el usuario');
+      }
+
+      // 2. Crear el outgoing payment desde el usuario hacia el admin
+      const outgoingPayment = await this.createUserOutgoingPayment(
+        quoteId,
+        finalGrant.access_token.value,
+        { 
+          communityContribution: true,
+          paymentType: 'community-support'
+        }
       );
 
+      logger.info(`✅ Pago de aporte a comunidad finalizado exitosamente: ${outgoingPayment.id}`);
       return {
-        paymentId,
-        openPaymentId: payment.id,
-        fromWallet,
-        toWallet,
-        amount,
-        communityId,
-        conceptId,
-        description,
-        state: payment.state,
-        createdAt: new Date().toISOString(),
-        incomingPayment: payment.incomingPayment
+        outgoingPayment,
+        grant: finalGrant,
+        userWallet: process.env.USER_WALLET_ADDRESS_URL,
+        adminWallet: process.env.ADMIN_WALLET_ADDRESS_URL
       };
+
     } catch (error) {
-      console.error('Error creating community payment:', error);
-      throw new Error(`Failed to create community payment: ${error.message}`);
+      logger.error('❌ Error finalizando pago de aporte a comunidad:', error);
+      throw error;
     }
+  }
+
+  // =================== UTILIDADES HEREDADAS (compatibilidad) ===================
+
+  async getIncomingPayment(walletAddressUrl, paymentId, accessToken) {
+    try {
+      // Determinar qué cliente usar basado en la wallet
+      const isAdminWallet = walletAddressUrl === process.env.ADMIN_WALLET_ADDRESS_URL;
+      const client = isAdminWallet ? await this.ensureAdminInitialized() : await this.ensureUserInitialized();
+      
+      const incomingPayment = await client.incomingPayment.get({
+        url: `${walletAddressUrl}/incoming-payments/${paymentId}`,
+        accessToken
+      });
+
+      return incomingPayment;
+    } catch (error) {
+      logger.error(`❌ Error obteniendo incoming payment ${paymentId}:`, error);
+      throw error;
+    }
+  }
+
+  async getOutgoingPayment(walletAddressUrl, paymentId, accessToken) {
+    try {
+      // Determinar qué cliente usar basado en la wallet
+      const isUserWallet = walletAddressUrl === process.env.USER_WALLET_ADDRESS_URL;
+      const client = isUserWallet ? await this.ensureUserInitialized() : await this.ensureAdminInitialized();
+      
+      const outgoingPayment = await client.outgoingPayment.get({
+        url: `${walletAddressUrl}/outgoing-payments/${paymentId}`,
+        accessToken
+      });
+
+      return outgoingPayment;
+    } catch (error) {
+      logger.error(`❌ Error obteniendo outgoing payment ${paymentId}:`, error);
+      throw error;
+    }
+  }
+
+  // Métodos de información del sistema
+  getSystemInfo() {
+    return {
+      adminWallet: {
+        address: process.env.ADMIN_WALLET_ADDRESS_URL,
+        keyId: process.env.ADMIN_KEY_ID,
+        initialized: this.isAdminInitialized,
+        role: 'Crear comunidades y recibir aportes'
+      },
+      userWallet: {
+        address: process.env.USER_WALLET_ADDRESS_URL,
+        keyId: process.env.USER_KEY_ID,
+        initialized: this.isUserInitialized,
+        role: 'Pagar aportes a comunidades'
+      }
+    };
   }
 }
 
-module.exports = new OpenPaymentsService();
+// Instancia singleton
+const openPaymentsService = new OpenPaymentsService();
+
+export default openPaymentsService;

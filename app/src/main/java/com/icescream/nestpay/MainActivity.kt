@@ -14,12 +14,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.icescream.nestpay.ui.screens.ActivityScreen
 import com.icescream.nestpay.ui.screens.CreateCommunityScreen
+import com.icescream.nestpay.ui.screens.CommunityDetailsScreen
 import com.icescream.nestpay.ui.screens.HomeScreen
+import com.icescream.nestpay.ui.screens.JoinCommunityScreen
 import com.icescream.nestpay.ui.screens.NotificationScreen
 import com.icescream.nestpay.ui.screens.ProfileScreen
 import com.icescream.nestpay.ui.screens.WelcomeScreen
 import com.icescream.nestpay.ui.theme.NestPayTheme
 import com.icescream.nestpay.ui.viewmodel.AuthViewModel
+import com.icescream.nestpay.ui.viewmodel.CommunityViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 class MainActivity : ComponentActivity() {
@@ -38,6 +41,7 @@ class MainActivity : ComponentActivity() {
 fun NestPayApp() {
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = viewModel()
+    val communityViewModel: CommunityViewModel = viewModel()
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         NavHost(
@@ -68,6 +72,12 @@ fun NestPayApp() {
                     },
                     onCreateCommunity = {
                         navController.navigate("create_community")
+                    },
+                    onJoinCommunity = {
+                        navController.navigate("join_community")
+                    },
+                    onCommunityClick = { communityId ->
+                        navController.navigate("community_details/$communityId")
                     },
                     authViewModel = authViewModel
                 )
@@ -113,6 +123,28 @@ fun NestPayApp() {
             }
             composable("create_community") {
                 CreateCommunityScreen(
+                    onNavigateBack = {
+                        navController.navigate("home")
+                    },
+                    onCommunityCreated = {
+                        navController.navigate("home") {
+                            popUpTo("home") { inclusive = true }
+                        }
+                    }
+                )
+            }
+            composable("community_details/{communityId}") { backStackEntry ->
+                val communityId = backStackEntry.arguments?.getString("communityId")
+                CommunityDetailsScreen(
+                    communityId = communityId,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    viewModel = communityViewModel
+                )
+            }
+            composable("join_community") {
+                JoinCommunityScreen(
                     onNavigateBack = {
                         navController.navigate("home")
                     }
