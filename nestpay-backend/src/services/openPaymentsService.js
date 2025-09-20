@@ -18,12 +18,37 @@ class OpenPaymentsService {
         privateKey = this.getPrivateKeyForWallet(walletAddress);
       }
 
+      // Validar que tenemos una clave privada
+      if (!privateKey) {
+        throw new Error('No private key available for wallet: ' + walletAddress);
+      }
+
+      console.log(`Creating client for wallet: ${walletAddress}`);
+      console.log(`Using private key format: ${privateKey.substring(0, 50)}...`);
+
+      // Convertir la clave privada a Buffer si es necesario
+      let keyBuffer;
+      if (typeof privateKey === 'string') {
+        // Si la clave incluye los headers, extraer solo la parte base64
+        const keyContent = privateKey
+          .replace(/-----BEGIN PRIVATE KEY-----/, '')
+          .replace(/-----END PRIVATE KEY-----/, '')
+          .replace(/\\n/g, '')
+          .replace(/\n/g, '')
+          .replace(/\s/g, '');
+        
+        keyBuffer = Buffer.from(keyContent, 'base64');
+      } else {
+        keyBuffer = privateKey;
+      }
+
       const client = await createAuthenticatedClient({
         walletAddressUrl: walletAddress,
-        privateKey: privateKey,
+        privateKey: keyBuffer,
       });
 
       this.clients.set(walletAddress, client);
+      console.log(`✅ Client created successfully for ${walletAddress}`);
       return client;
     } catch (error) {
       console.error('Error creating Open Payments client:', error);
@@ -35,16 +60,30 @@ class OpenPaymentsService {
    * Determine which private key to use for a given wallet address
    */
   getPrivateKeyForWallet(walletAddress) {
+    console.log(`🔍 Determining private key for wallet: ${walletAddress}`);
+    
     // Lógica para determinar qué clave privada usar
     // Esto podría basarse en la URL de la wallet o en una configuración
     
     if (walletAddress.includes('admin') || walletAddress === process.env.DEFAULT_WALLET_ADDRESS) {
+      console.log(`📝 Using ADMIN_WALLET_PRIVATE_KEY for ${walletAddress}`);
       return process.env.ADMIN_WALLET_PRIVATE_KEY || process.env.PRIVATE_KEY;
     } else if (walletAddress.includes('user')) {
+      console.log(`📝 Using USER_WALLET_PRIVATE_KEY for ${walletAddress}`);
       return process.env.USER_WALLET_PRIVATE_KEY || process.env.PRIVATE_KEY;
     }
     
+    // Para wallets específicas, podemos usar una lógica más específica
+    if (walletAddress.includes('wallettest1')) {
+      console.log(`📝 Using USER_WALLET_PRIVATE_KEY for wallettest1`);
+      return process.env.USER_WALLET_PRIVATE_KEY || process.env.PRIVATE_KEY;
+    } else if (walletAddress.includes('wallettest')) {
+      console.log(`📝 Using ADMIN_WALLET_PRIVATE_KEY for wallettest`);
+      return process.env.ADMIN_WALLET_PRIVATE_KEY || process.env.PRIVATE_KEY;
+    }
+    
     // Fallback a la clave privada por defecto
+    console.log(`📝 Using default PRIVATE_KEY for ${walletAddress}`);
     return process.env.PRIVATE_KEY;
   }
 
