@@ -107,12 +107,22 @@ class OpenPaymentsService {
     try {
       const client = await this.ensureAdminInitialized();
       const adminWalletUrl = process.env.ADMIN_WALLET_ADDRESS_URL;
+      logger.info(`🔍 Obteniendo wallet address para: ${adminWalletUrl}`);
+      
       const walletAddress = await this.getWalletAddress(adminWalletUrl);
+      logger.info(`🔍 Wallet obtenida:`, {
+        id: walletAddress.id,
+        assetCode: walletAddress.assetCode,
+        assetScale: walletAddress.assetScale,
+        authServer: walletAddress.authServer
+      });
       
       if (!walletAddress.authServer) {
         throw new Error('Admin wallet no tiene servidor de autorización configurado');
       }
 
+      logger.info(`🔍 Solicitando grant a: ${walletAddress.authServer}`);
+      
       // Solicitar grant para el admin
       const grant = await client.grant.request(
         { url: walletAddress.authServer },
@@ -129,17 +139,30 @@ class OpenPaymentsService {
         }
       );
 
+      logger.info(`🔍 Grant obtenido:`, {
+        hasAccessToken: !!grant.access_token?.value,
+        tokenLength: grant.access_token?.value?.length
+      });
+
       if (!grant.access_token?.value) {
         throw new Error('No se pudo obtener el token de acceso para admin incoming payment');
       }
 
-      // Crear incoming payment en la wallet del admin
-      const incomingPayment = await client.incomingPayment.create(
-        {
+      logger.info(`🔍 Creando incoming payment con:`, {
+        url: adminWalletUrl,
+        amount: {
+          value: amount.value.toString(),
+          assetCode: amount.assetCode || walletAddress.assetCode,
+          assetScale: amount.assetScale || walletAddress.assetScale
+        }
+      });
+
+      logger.info(`🔍 Parámetros completos para incomingPayment.create:`, {
+        requestUrl: {
           url: adminWalletUrl,
-          accessToken: grant.access_token.value
+          accessToken: '***TOKEN***'
         },
-        {
+        requestBody: {
           walletAddress: adminWalletUrl,
           incomingAmount: {
             value: amount.value.toString(),
@@ -153,15 +176,56 @@ class OpenPaymentsService {
             timestamp: new Date().toISOString()
           }
         }
-      );
+      });
 
-      logger.info(`✅ Incoming payment para comunidad creado: ${incomingPayment.id}`);
-      return {
-        incomingPayment,
-        grant,
-        walletAddress,
-        adminWallet: adminWalletUrl
-      };
+      logger.info(`🔍 Intentando crear incoming payment...`);
+      logger.info(`🔍 URL exacta que usará el SDK: ${adminWalletUrl}/incoming-payments`);
+      logger.info(`🔍 Método: POST`);
+      
+      try {
+        // Crear incoming payment en la wallet del admin
+        const incomingPayment = await client.incomingPayment.create(
+          {
+            url: adminWalletUrl,
+            accessToken: grant.access_token.value
+          },
+          {
+            walletAddress: adminWalletUrl,
+            incomingAmount: {
+              value: amount.value.toString(),
+              assetCode: amount.assetCode || walletAddress.assetCode,
+              assetScale: amount.assetScale || walletAddress.assetScale
+            },
+            metadata: {
+              description,
+              createdBy: 'NestPay-Admin',
+              type: 'community-contribution',
+              timestamp: new Date().toISOString()
+            }
+          }
+        );
+        
+        logger.info(`✅ Incoming payment creado exitosamente: ${incomingPayment.id}`);
+        return {
+          incomingPayment,
+          grant,
+          walletAddress,
+          adminWallet: adminWalletUrl
+        };
+        
+      } catch (createError) {
+        logger.error(`❌ Error específico al crear incoming payment:`, {
+          error: createError,
+          message: createError.message,
+          status: createError.status,
+          description: createError.description,
+          stack: createError.stack,
+          requestUrl: adminWalletUrl,
+          hasToken: !!grant.access_token?.value
+        });
+        throw createError;
+      }
+
     } catch (error) {
       logger.error('❌ Error creando incoming payment para comunidad:', error);
       throw error;

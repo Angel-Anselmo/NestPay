@@ -19,7 +19,9 @@ import androidx.compose.ui.window.Dialog
 import com.icescream.nestpay.data.models.PaymentConcept
 import com.icescream.nestpay.ui.theme.NestPayPrimary
 import com.icescream.nestpay.ui.viewmodel.ContributionViewModel
+import com.icescream.nestpay.ui.viewmodel.CreateContributionState
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,10 +37,43 @@ fun ContributeDialog(
 ) {
     var contributionAmount by remember { mutableStateOf("") }
 
+    // Observar el estado de la contribución
+    val contributionState by contributionViewModel.createContributionState.collectAsState()
+
+    // Estados para el WebView de autorización
+    var showAuthorizationWebView by remember { mutableStateOf(false) }
+    var authorizationUrl by remember { mutableStateOf("") }
+    var paymentProcessData by remember {
+        mutableStateOf<com.icescream.nestpay.ui.viewmodel.PaymentProcessData?>(
+            null
+        )
+    }
+
     // Reset form when dialog shows
     LaunchedEffect(showDialog) {
         if (showDialog) {
             contributionAmount = ""
+            contributionViewModel.resetCreateContributionState()
+        }
+    }
+
+    // Manejar cambios en el estado de contribución
+    LaunchedEffect(contributionState) {
+        when (val state = contributionState) {
+            is CreateContributionState.AuthorizationRequired -> {
+                authorizationUrl = state.authorizationUrl
+                paymentProcessData = state.paymentData
+                showAuthorizationWebView = true
+            }
+            is CreateContributionState.Success -> {
+                // Éxito - cerrar diálogo después de un breve delay
+                delay(1500)
+                onDismiss()
+                contributionViewModel.resetCreateContributionState()
+            }
+            else -> {
+                showAuthorizationWebView = false
+            }
         }
     }
 
@@ -122,11 +157,16 @@ fun ContributeDialog(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // Payment info - Simplified version
+                    // Payment info - Actualizado con estado
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
-                            containerColor = NestPayPrimary.copy(alpha = 0.1f)
+                            containerColor = when (contributionState) {
+                                is CreateContributionState.Loading -> Color(0xFFFF9800).copy(alpha = 0.1f)
+                                is CreateContributionState.Success -> Color.Green.copy(alpha = 0.1f)
+                                is CreateContributionState.Error -> Color.Red.copy(alpha = 0.1f)
+                                else -> NestPayPrimary.copy(alpha = 0.1f)
+                            }
                         ),
                         shape = RoundedCornerShape(8.dp)
                     ) {
@@ -135,23 +175,48 @@ fun ContributeDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                Icons.Default.AccountCircle,
+                                when (contributionState) {
+                                    is CreateContributionState.Loading -> Icons.Default.Refresh
+                                    is CreateContributionState.Success -> Icons.Default.CheckCircle
+                                    is CreateContributionState.Error -> Icons.Default.Warning
+                                    else -> Icons.Default.AccountCircle
+                                },
                                 contentDescription = null,
-                                tint = NestPayPrimary,
+                                tint = when (contributionState) {
+                                    is CreateContributionState.Loading -> Color(0xFFFF9800)
+                                    is CreateContributionState.Success -> Color.Green
+                                    is CreateContributionState.Error -> Color.Red
+                                    else -> NestPayPrimary
+                                },
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
                                 Text(
-                                    text = "Pago vía:",
+                                    text = when (contributionState) {
+                                        is CreateContributionState.Loading -> "Procesando..."
+                                        is CreateContributionState.AuthorizationRequired -> "Esperando autorización"
+                                        is CreateContributionState.Success -> "¡Pago completado!"
+                                        is CreateContributionState.Error -> "Error en pago"
+                                        else -> "Pago vía:"
+                                    },
                                     fontSize = 12.sp,
                                     color = Color.Gray
                                 )
                                 Text(
-                                    text = "Open Payments (Backend Local)",
+                                    text = when (val state = contributionState) {
+                                        is CreateContributionState.Error -> state.message
+                                        is CreateContributionState.Success -> "Contribución registrada exitosamente"
+                                        else -> "Open Payments (Backend Local)"
+                                    },
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = NestPayPrimary
+                                    color = when (contributionState) {
+                                        is CreateContributionState.Loading -> Color(0xFFFF9800)
+                                        is CreateContributionState.Success -> Color.Green
+                                        is CreateContributionState.Error -> Color.Red
+                                        else -> NestPayPrimary
+                                    }
                                 )
                             }
                         }
@@ -159,44 +224,68 @@ fun ContributeDialog(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Amount input
-                    Column {
-                        Text(
-                            text = "Monto a contribuir",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color.Black,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
+                    // Amount input - Solo mostrar si no está en proceso
+                    if (contributionState !is CreateContributionState.Loading &&
+                        contributionState !is CreateContributionState.AuthorizationRequired &&
+                        contributionState !is CreateContributionState.Success
+                    ) {
 
-                        OutlinedTextField(
-                            value = contributionAmount,
-                            onValueChange = { value ->
-                                // Only allow numbers and decimal point
-                                if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d*$"))) {
-                                    contributionAmount = value
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("0.00") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            prefix = { Text("$") },
-                            suffix = { Text("USD", color = Color.Gray) },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = NestPayPrimary,
-                                unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        )
+                        Column {
+                            Text(
+                                text = "Monto a contribuir",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.Black,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
 
-                        Spacer(modifier = Modifier.height(4.dp))
+                            OutlinedTextField(
+                                value = contributionAmount,
+                                onValueChange = { value ->
+                                    // Only allow numbers and decimal point
+                                    if (value.isEmpty() || value.matches(Regex("^\\d*\\.?\\d*$"))) {
+                                        contributionAmount = value
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                placeholder = { Text("0.00") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                prefix = { Text("$") },
+                                suffix = { Text("USD", color = Color.Gray) },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NestPayPrimary,
+                                    unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                isError = contributionState is CreateContributionState.Error
+                            )
 
-                        Text(
-                            text = "El pago se procesará a través del backend local con Open Payments",
-                            fontSize = 11.sp,
-                            color = Color.Gray
-                        )
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Text(
+                                text = "Se abrirá una ventana para autorizar el pago en tu wallet",
+                                fontSize = 11.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    } else if (contributionState is CreateContributionState.AuthorizationRequired) {
+                        // Mostrar información de autorización pendiente
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            CircularProgressIndicator(
+                                color = NestPayPrimary,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Esperando autorización en tu wallet...",
+                                fontSize = 14.sp,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
@@ -207,54 +296,90 @@ fun ContributeDialog(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         OutlinedButton(
-                            onClick = onDismiss,
+                            onClick = {
+                                if (contributionState is CreateContributionState.AuthorizationRequired) {
+                                    contributionViewModel.cancelPaymentProcess()
+                                }
+                                onDismiss()
+                            },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("Cancelar")
+                            Text(
+                                if (contributionState is CreateContributionState.AuthorizationRequired)
+                                    "Cancelar Pago"
+                                else
+                                    "Cancelar"
+                            )
                         }
 
                         Button(
                             onClick = {
                                 val amount = contributionAmount.toDoubleOrNull()
                                 if (amount != null && amount > 0) {
-                                    onContribute(amount)
+                                    // Usar el ViewModel para iniciar el proceso
+                                    contributionViewModel.createContribution(
+                                        conceptId = concept.id,
+                                        communityId = communityId,
+                                        amount = amount,
+                                        userName = userName
+                                    )
                                 }
                             },
                             modifier = Modifier.weight(1f),
-                            enabled = !isLoading &&
+                            enabled = contributionState !is CreateContributionState.Loading &&
+                                    contributionState !is CreateContributionState.AuthorizationRequired &&
+                                    contributionState !is CreateContributionState.Success &&
                                     contributionAmount.isNotBlank() &&
                                     contributionAmount.toDoubleOrNull() != null &&
                                     contributionAmount.toDoubleOrNull()!! > 0,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = NestPayPrimary
+                                containerColor = when (contributionState) {
+                                    is CreateContributionState.Success -> Color.Green
+                                    else -> NestPayPrimary
+                                }
                             ),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            if (isLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Enviando...")
-                            } else {
-                                Icon(
-                                    Icons.Default.Send,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Contribuir")
+                            when (contributionState) {
+                                is CreateContributionState.Loading -> {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        color = Color.White,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Procesando...")
+                                }
+
+                                is CreateContributionState.Success -> {
+                                    Icon(
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("¡Completado!")
+                                }
+
+                                else -> {
+                                    Icon(
+                                        Icons.Default.Send,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Contribuir")
+                                }
                             }
                         }
                     }
 
-                    if (isLoading) {
+                    // Estado adicional de procesamiento
+                    if (contributionState is CreateContributionState.Loading) {
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "Procesando pago con Open Payments...",
+                            text = "Iniciando pago con Open Payments...",
                             fontSize = 12.sp,
                             color = Color.Gray,
                             textAlign = TextAlign.Center
@@ -264,4 +389,24 @@ fun ContributeDialog(
             }
         }
     }
+
+    // WebView para autorización
+    PaymentAuthorizationWebView(
+        showDialog = showAuthorizationWebView,
+        authorizationUrl = authorizationUrl,
+        onDismiss = {
+            showAuthorizationWebView = false
+            contributionViewModel.cancelPaymentProcess()
+        },
+        onAuthorizationComplete = { interactRef ->
+            showAuthorizationWebView = false
+            paymentProcessData?.let { processData ->
+                contributionViewModel.finalizeContribution(interactRef, processData)
+            }
+        },
+        onAuthorizationError = { error ->
+            showAuthorizationWebView = false
+            contributionViewModel.cancelPaymentProcess()
+        }
+    )
 }

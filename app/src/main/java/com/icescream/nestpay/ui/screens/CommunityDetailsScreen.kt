@@ -672,8 +672,7 @@ private fun PaymentConceptsSection(
                                     color = Color.Gray
                                 )
                                 Button(
-                                    // onClick = { onContributeClick(concept) },
-                                    onClick = { concept },
+                                    onClick = { onContributeClick(concept) },
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = NestPayPrimary,
                                         contentColor = Color.White

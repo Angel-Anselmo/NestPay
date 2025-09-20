@@ -17,8 +17,8 @@ data class CommunityPaymentRequest(
 
 data class PaymentAmount(
     @SerializedName("value") val value: String,
-    @SerializedName("assetCode") val assetCode: String = "USD",
-    @SerializedName("assetScale") val assetScale: Int = 2
+    @SerializedName("assetCode") val assetCode: String? = null,
+    @SerializedName("assetScale") val assetScale: Int? = null
 )
 
 data class CommunityPaymentResponse(
